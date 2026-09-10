@@ -26,6 +26,12 @@
     home: '<svg viewBox="0 0 24 24"><path d="M4 11.2 12 4l8 7.2V20H4z"/></svg>',
     menu: '<svg viewBox="0 0 24 24"><path d="M5 7h14M5 12h14M5 17h14"/></svg>',
   };
+  const DPAD_ICON = {
+    up: '<svg viewBox="0 0 24 24"><path d="M12 6.5l6 11h-12z"/></svg>',
+    down: '<svg viewBox="0 0 24 24"><path d="M12 17.5l-6-11h12z"/></svg>',
+    left: '<svg viewBox="0 0 24 24"><path d="M6.5 12l11-6v12z"/></svg>',
+    right: '<svg viewBox="0 0 24 24"><path d="M17.5 12l-11 6v-12z"/></svg>',
+  };
 
   let keymap = null;
   let activeLayer = 0;
@@ -328,14 +334,15 @@
     const dpad = document.createElement("div");
     dpad.className = "dpad";
     [
-      ["up", 0x52],
-      ["right", 0x4f],
-      ["down", 0x51],
-      ["left", 0x50],
-    ].forEach(([cls, vk]) => {
+      ["up", 0x52, DPAD_ICON.up],
+      ["right", 0x4f, DPAD_ICON.right],
+      ["down", 0x51, DPAD_ICON.down],
+      ["left", 0x50, DPAD_ICON.left],
+    ].forEach(([cls, vk, icon]) => {
       const btn = document.createElement("button");
       btn.type = "button";
       btn.className = "arc " + cls;
+      btn.innerHTML = icon;
       dpad.appendChild(bindBtn(btn, layer, vk));
     });
     const ok = document.createElement("button");

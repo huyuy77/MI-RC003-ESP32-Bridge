@@ -231,22 +231,22 @@ main { max-width: 1000px; margin: 0 auto; padding: 26px 24px 90px; }
 /* ----------------------------- remote (Xiaomi-style) ----------------------------- */
 .remote {
   position: relative;
-  width: min(248px, 76vw);
+  width: min(200px, 72vw);
   margin: 0 auto;
-  padding: 34px 20px 44px;
+  padding: 28px 22px 34px;
   display: flex;
   flex-direction: column;
   align-items: center;
   border: 1px solid #d2d2d5;
-  border-radius: 38px;
+  border-radius: 32px;
   background: #ededee;
   box-shadow: 0 18px 44px rgba(0, 0, 0, 0.12);
 }
 .remote::before {
   content: "";
   position: absolute;
-  inset: 11px;
-  border-radius: 29px;
+  inset: 10px;
+  border-radius: 23px;
   border: 1px solid rgba(255, 255, 255, 0.7);
   pointer-events: none;
 }
@@ -254,7 +254,7 @@ main { max-width: 1000px; margin: 0 auto; padding: 26px 24px 90px; }
   width: 100%;
   display: flex;
   justify-content: space-between;
-  margin-bottom: 38px;
+  margin-bottom: 26px;
 }
 .utility, .round, .volume button {
   display: grid;
@@ -266,9 +266,9 @@ main { max-width: 1000px; margin: 0 auto; padding: 26px 24px 90px; }
   font-family: inherit;
   transition: background 0.15s ease, color 0.15s ease, transform 0.12s ease, box-shadow 0.15s ease;
 }
-.utility { width: 46px; height: 46px; border-radius: 50%; }
+.utility { width: 42px; height: 42px; border-radius: 50%; }
 .utility svg, .round svg {
-  width: 21px; height: 21px; fill: none;
+  width: 19px; height: 19px; fill: none;
   stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;
 }
 .utility:hover, .round:hover {
@@ -280,17 +280,18 @@ main { max-width: 1000px; margin: 0 auto; padding: 26px 24px 90px; }
 .utility:active, .round:active, .volume button:active { transform: scale(0.95); }
 
 .dpad {
+  --ring: 30px;
   position: relative;
-  width: min(150px, 50vw);
+  width: 100%;
   aspect-ratio: 1;
-  margin: 0 0 40px;
+  margin: 0 0 28px;
 }
 /* four quarter-ring direction keys (clipped to their quadrant so hovers don't overlap) */
 .arc {
   position: absolute;
   inset: 0;
   border-radius: 50%;
-  border: 30px solid transparent;
+  border: var(--ring) solid transparent;
   background: transparent;
   cursor: pointer;
   color: #3a3b3e;
@@ -302,6 +303,11 @@ main { max-width: 1000px; margin: 0 auto; padding: 26px 24px 90px; }
 .arc.left  { border-left-color: currentColor; clip-path: polygon(0 0, 0 100%, 50% 50%); }
 .arc:hover { color: #56585d; }
 .arc:active { color: #6b6d73; }
+.arc svg { position: absolute; width: 15px; height: 15px; fill: currentColor; }
+.arc.up svg    { top: calc(-1 * var(--ring) / 2); left: 50%; transform: translate(-50%, -50%); }
+.arc.down svg  { bottom: calc(-1 * var(--ring) / 2); left: 50%; transform: translate(-50%, -50%); }
+.arc.left svg  { left: calc(-1 * var(--ring) / 2); top: 50%; transform: translate(-50%, -50%); }
+.arc.right svg { right: calc(-1 * var(--ring) / 2); top: 50%; transform: translate(-50%, -50%); }
 /* OK key fills the area inside the white ring */
 .dp.ok {
   position: absolute;
@@ -325,27 +331,29 @@ main { max-width: 1000px; margin: 0 auto; padding: 26px 24px 90px; }
   width: 100%;
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 22px 14px;
-  justify-items: center;
+  gap: 16px 12px;
+  justify-items: start;
   align-items: center;
 }
-.round { width: 58px; height: 58px; border-radius: 50%; }
-.round.back svg { width: 23px; }
-.round.home svg, .round.menu svg { width: 22px; }
-.round.tv { font-size: 13px; font-weight: 600; }
+.remote-controls .volume,
+.remote-controls .round.tv { justify-self: end; }
+.round { width: 50px; height: 50px; border-radius: 50%; }
+.round.back svg { width: 21px; }
+.round.home svg, .round.menu svg { width: 20px; }
+.round.tv { font-size: 12px; font-weight: 600; }
 .round.tv span { padding: 2px 5px; border: 1.4px solid currentColor; border-radius: 5px; }
 .volume {
-  width: 58px;
+  width: 50px;
   grid-row: span 2;
   align-self: stretch;
   overflow: hidden;
   display: grid;
   grid-template-rows: 1fr 1fr;
-  border-radius: 29px;
+  border-radius: 25px;
   border: 1px solid #343538;
   background: #27282a;
 }
-.volume button { border-radius: 0; border: none; font-size: 26px; font-weight: 200; }
+.volume button { border-radius: 0; border: none; font-size: 22px; font-weight: 200; }
 .volume button:first-child { border-bottom: 1px solid #414245; }
 .volume button:hover { background: #34363a; color: #fff; }
 
