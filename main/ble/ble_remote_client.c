@@ -59,10 +59,9 @@ static uint8_t  s_own_addr_type = 0;
 static uint16_t s_atvv_cmd_chr = 0;
 static uint16_t s_atvv_aud_chr = 0;
 static uint16_t s_atvv_ctl_chr = 0;
-static uint16_t s_atvv_aud_cccd = 0;
-static uint16_t s_atvv_ctl_cccd = 0;
-static uint16_t s_hid_report_chr = 0;
-static uint16_t s_hid_report_cccd = 0;
+#define MAX_REPORTS 6
+static uint16_t s_hid_report_chrs[MAX_REPORTS];
+static int s_hid_report_count = 0;
 static uint16_t s_hid_proto_chr = 0;
 static uint16_t s_hid_ctrl_chr = 0;
 static uint16_t s_atvv_start = 0, s_atvv_end = 0;
@@ -136,7 +135,7 @@ typedef enum {
     PHASE_HANDSHAKE
 } init_phase_t;
 
-#define MAX_OPS 6
+#define MAX_OPS 10
 typedef struct {
     uint16_t handle;
     uint8_t  len;
@@ -149,6 +148,7 @@ static int s_op_idx = 0;
 static init_phase_t s_phase = PHASE_IDLE;
 
 static void run_next_op(void);
+static uint16_t cccd_lookup(uint16_t chr_val_handle);
 
 static int write_cb(uint16_t conn_handle, const struct ble_gatt_error *error,
                     struct ble_gatt_attr *attr, void *arg)
@@ -165,28 +165,49 @@ static int write_cb(uint16_t conn_handle, const struct ble_gatt_error *error,
 static void run_next_op(void)
 {
     if (s_op_idx >= s_op_count) {
-        // Phase complete -> advance
-        if (s_phase == PHASE_SUBSCRIBE) {
-            s_phase = PHASE_HID_INIT;
-            s_op_idx = 0;
+        // Phase complete -> advance to the next phase.
+        if (s_phase == PHASE_HID_INIT) {
+            s_phase = PHASE_SUBSCRIBE;
             s_op_count = 0;
-            if (s_hid_proto_chr) {
-                s_ops[s_op_count].handle = s_hid_proto_chr;
-                s_ops[s_op_count].data[0] = 0x01; // report protocol
-                s_ops[s_op_count].len = 1;
+            s_op_idx = 0;
+
+            // ATVV audio + control (simple characteristics, CCCD = value + 1).
+            uint16_t atvv[2] = { s_atvv_aud_chr, s_atvv_ctl_chr };
+            for (int i = 0; i < 2; i++) {
+                uint16_t chr = atvv[i];
+                if (!chr) continue;
+                uint16_t cccd = cccd_lookup(chr);
+                if (!cccd) cccd = chr + 1;
+                s_ops[s_op_count].handle = cccd;
+                s_ops[s_op_count].data[0] = 0x01; // notifications enabled
+                s_ops[s_op_count].data[1] = 0x00;
+                s_ops[s_op_count].len = 2;
                 s_op_count++;
+                app_log("BLE", "Subscribe ATVV chr 0x%04X via CCCD 0x%04X", chr, cccd);
             }
-            if (s_hid_ctrl_chr) {
-                s_ops[s_op_count].handle = s_hid_ctrl_chr;
-                s_ops[s_op_count].data[0] = 0x00; // exit suspend
-                s_ops[s_op_count].len = 1;
+
+            // HID input reports: use the discovered CCCD; output-only reports
+            // have none and are skipped.
+            for (int i = 0; i < s_hid_report_count && s_op_count < MAX_OPS; i++) {
+                uint16_t chr = s_hid_report_chrs[i];
+                uint16_t cccd = cccd_lookup(chr);
+                if (!cccd) {
+                    app_log("BLE", "Report chr 0x%04X has no CCCD, skipping", chr);
+                    continue;
+                }
+                s_ops[s_op_count].handle = cccd;
+                s_ops[s_op_count].data[0] = 0x01;
+                s_ops[s_op_count].data[1] = 0x00;
+                s_ops[s_op_count].len = 2;
                 s_op_count++;
+                app_log("BLE", "Subscribe HID report chr 0x%04X via CCCD 0x%04X", chr, cccd);
             }
+
             run_next_op();
-        } else if (s_phase == PHASE_HID_INIT) {
+        } else if (s_phase == PHASE_SUBSCRIBE) {
             s_phase = PHASE_HANDSHAKE;
-            s_op_idx = 0;
             s_op_count = 0;
+            s_op_idx = 0;
             if (s_atvv_cmd_chr) {
                 static const uint8_t caps[6] = { 0x0A, 0x01, 0x00, 0x00, 0x03, 0x03 };
                 s_ops[s_op_count].handle = s_atvv_cmd_chr;
@@ -213,32 +234,38 @@ static void run_next_op(void)
     }
 }
 
-static void begin_subscribe(void)
+// CCCD handle table discovered from the peer's attribute database.
+#define MAX_CCCDS 8
+static struct { uint16_t chr; uint16_t cccd; } s_cccds[MAX_CCCDS];
+static int s_cccd_count = 0;
+
+static uint16_t cccd_lookup(uint16_t chr_val_handle)
+{
+    for (int i = 0; i < s_cccd_count; i++) {
+        if (s_cccds[i].chr == chr_val_handle) {
+            return s_cccds[i].cccd;
+        }
+    }
+    return 0;
+}
+
+// Start the post-discovery init sequence: HID Control Point / Protocol Mode
+// first, then subscribe to notifications, then the ATVV GET_CAPS handshake.
+static void begin_init_sequence(void)
 {
     s_op_count = 0;
     s_op_idx = 0;
-    s_phase = PHASE_SUBSCRIBE;
+    s_phase = PHASE_HID_INIT;
 
-    if (s_atvv_aud_chr) {
-        s_atvv_aud_cccd = s_atvv_aud_chr + 1;
-        s_ops[s_op_count].handle = s_atvv_aud_cccd;
-        s_ops[s_op_count].data[0] = 0x01; // notify
+    if (s_hid_ctrl_chr) {
+        s_ops[s_op_count].handle = s_hid_ctrl_chr;
+        s_ops[s_op_count].data[0] = 0x00; // exit suspend
         s_ops[s_op_count].len = 1;
         s_op_count++;
     }
-    if (s_atvv_ctl_chr) {
-        s_atvv_ctl_cccd = s_atvv_ctl_chr + 1;
-        s_ops[s_op_count].handle = s_atvv_ctl_cccd;
-        s_ops[s_op_count].data[0] = 0x01;
-        s_ops[s_op_count].len = 1;
-        s_op_count++;
-    }
-    if (s_hid_report_chr) {
-        if (!s_hid_report_cccd) {
-            s_hid_report_cccd = s_hid_report_chr + 1;
-        }
-        s_ops[s_op_count].handle = s_hid_report_cccd;
-        s_ops[s_op_count].data[0] = 0x01;
+    if (s_hid_proto_chr) {
+        s_ops[s_op_count].handle = s_hid_proto_chr;
+        s_ops[s_op_count].data[0] = 0x01; // report protocol mode
         s_ops[s_op_count].len = 1;
         s_op_count++;
     }
@@ -246,22 +273,25 @@ static void begin_subscribe(void)
     run_next_op();
 }
 
-// ===========================================================================
-// Descriptor discovery for the HID report characteristic (CCCD handle)
-// ===========================================================================
-static int dsc_disc_cb(uint16_t conn_handle, const struct ble_gatt_error *error,
-                       uint16_t chr_val_handle, const struct ble_gatt_dsc *dsc, void *arg)
+// Enumerate every descriptor so each notify characteristic can be mapped to
+// its real Client Characteristic Configuration Descriptor (0x2902). Some
+// characteristics (e.g. the HOGP report) have extra descriptors before the
+// CCCD, so chr+1 is not reliable.
+static int dsc_all_cb(uint16_t conn_handle, const struct ble_gatt_error *error,
+                      uint16_t chr_val_handle, const struct ble_gatt_dsc *dsc, void *arg)
 {
-    (void)conn_handle; (void)chr_val_handle; (void)arg;
+    (void)conn_handle; (void)arg;
     if (error->status == 0 && dsc) {
         if (dsc->uuid.u.type == BLE_UUID_TYPE_16 && dsc->uuid.u16.value == 0x2902) {
-            s_hid_report_cccd = dsc->handle;
+            if (s_cccd_count < MAX_CCCDS) {
+                s_cccds[s_cccd_count].chr = chr_val_handle;
+                s_cccds[s_cccd_count].cccd = dsc->handle;
+                s_cccd_count++;
+            }
+            app_log("BLE", "CCCD for chr 0x%04X at 0x%04X", chr_val_handle, dsc->handle);
         }
     } else if (error->status == BLE_HS_EDONE) {
-        if (!s_hid_report_cccd) {
-            s_hid_report_cccd = s_hid_report_chr + 1;
-        }
-        begin_subscribe();
+        begin_init_sequence();
     }
     return 0;
 }
@@ -280,18 +310,25 @@ static int chr_disc_cb(uint16_t conn_handle, const struct ble_gatt_error *error,
             else if (ble_uuid_cmp(u, &s_uuid_atvv_aud.u) == 0) s_atvv_aud_chr = chr->val_handle;
             else if (ble_uuid_cmp(u, &s_uuid_atvv_ctl.u) == 0) s_atvv_ctl_chr = chr->val_handle;
         } else if (u->type == BLE_UUID_TYPE_16) {
-            if (ble_uuid_cmp(u, &s_uuid_hid_report.u) == 0) s_hid_report_chr = chr->val_handle;
-            else if (ble_uuid_cmp(u, &s_uuid_hid_proto_mode.u) == 0) s_hid_proto_chr = chr->val_handle;
-            else if (ble_uuid_cmp(u, &s_uuid_hid_ctrl_point.u) == 0) s_hid_ctrl_chr = chr->val_handle;
+            if (ble_uuid_cmp(u, &s_uuid_hid_report.u) == 0) {
+                if (s_hid_report_count < MAX_REPORTS) {
+                    s_hid_report_chrs[s_hid_report_count++] = chr->val_handle;
+                }
+            } else if (ble_uuid_cmp(u, &s_uuid_hid_proto_mode.u) == 0) {
+                s_hid_proto_chr = chr->val_handle;
+            } else if (ble_uuid_cmp(u, &s_uuid_hid_ctrl_point.u) == 0) {
+                s_hid_ctrl_chr = chr->val_handle;
+            }
         }
     } else if (error->status == BLE_HS_EDONE) {
-        app_log("BLE", "Chars: cmd=0x%04X aud=0x%04X ctl=0x%04X report=0x%04X proto=0x%04X cpoint=0x%04X",
+        app_log("BLE", "Chars: cmd=0x%04X aud=0x%04X ctl=0x%04X reports=%d proto=0x%04X cpoint=0x%04X",
                 s_atvv_cmd_chr, s_atvv_aud_chr, s_atvv_ctl_chr,
-                s_hid_report_chr, s_hid_proto_chr, s_hid_ctrl_chr);
-        if (s_hid_report_chr && s_hid_end) {
-            ble_gattc_disc_all_dscs(conn_handle, s_hid_report_chr, s_hid_end, dsc_disc_cb, NULL);
-        } else {
-            begin_subscribe();
+                s_hid_report_count, s_hid_proto_chr, s_hid_ctrl_chr);
+        s_cccd_count = 0;
+        int rc = ble_gattc_disc_all_dscs(conn_handle, 0, 0xFFFF, dsc_all_cb, NULL);
+        if (rc != 0) {
+            app_log("BLE", "disc_all_dscs rc=%d, subscribing with fallback handles", rc);
+            begin_init_sequence();
         }
     }
     return 0;
@@ -323,12 +360,13 @@ static int svc_disc_cb(uint16_t conn_handle, const struct ble_gatt_error *error,
 
 static void start_discovery(void)
 {
-    if (s_discovery_started) return;
+    if (s_discovery_started || s_conn_handle == BLE_HS_CONN_HANDLE_NONE) return;
     s_discovery_started = true;
     s_atvv_cmd_chr = s_atvv_aud_chr = s_atvv_ctl_chr = 0;
-    s_hid_report_chr = s_hid_proto_chr = s_hid_ctrl_chr = 0;
-    s_atvv_aud_cccd = s_atvv_ctl_cccd = s_hid_report_cccd = 0;
+    s_hid_proto_chr = s_hid_ctrl_chr = 0;
+    s_hid_report_count = 0;
     s_atvv_start = s_atvv_end = s_hid_start = s_hid_end = 0;
+    s_cccd_count = 0;
     app_log("BLE", "Discovering GATT services...");
     ble_gattc_disc_all_svcs(s_conn_handle, svc_disc_cb, NULL);
 }
@@ -574,12 +612,20 @@ static int gap_event_cb(struct ble_gap_event *event, void *arg)
             led_indicator_set(LED_STATE_WAIT_CONNECTION);
             break;
 
-        case BLE_GAP_EVENT_ENC_CHANGE:
-            app_log("BLE", "Encryption change: status=%d", event->enc_change.status);
+        case BLE_GAP_EVENT_ENC_CHANGE: {
+            struct ble_gap_conn_desc desc;
+            if (ble_gap_conn_find(event->enc_change.conn_handle, &desc) == 0) {
+                app_log("BLE", "Encryption change: status=%d encrypted=%d bonded=%d authenticated=%d",
+                        event->enc_change.status, desc.sec_state.encrypted,
+                        desc.sec_state.bonded, desc.sec_state.authenticated);
+            } else {
+                app_log("BLE", "Encryption change: status=%d", event->enc_change.status);
+            }
             if (event->enc_change.status == 0 || !s_discovery_started) {
                 start_discovery();
             }
             break;
+        }
 
         case BLE_GAP_EVENT_MTU:
             app_log("BLE", "MTU updated: %u", event->mtu.value);
@@ -597,8 +643,13 @@ static int gap_event_cb(struct ble_gap_event *event, void *arg)
                 audio_pipeline_feed_adpcm(&g_audio_pipeline, buf, len);
             } else if (handle == s_atvv_ctl_chr) {
                 handle_atvv_ctl(buf, len);
-            } else if (handle == s_hid_report_chr) {
-                handle_hid_report(buf, len);
+            } else {
+                for (int i = 0; i < s_hid_report_count; i++) {
+                    if (handle == s_hid_report_chrs[i]) {
+                        handle_hid_report(buf, len);
+                        break;
+                    }
+                }
             }
             break;
         }
@@ -753,8 +804,8 @@ void ble_remote_task(void)
     }
 
     // Fallback: if security never completes, still attempt discovery.
-    if (s_state == BLE_STATE_CONNECTING && !s_discovery_started &&
-        (now - s_conn_start_ms) > 3000) {
+    if (s_state == BLE_STATE_CONNECTING && s_conn_handle != BLE_HS_CONN_HANDLE_NONE &&
+        !s_discovery_started && (now - s_conn_start_ms) > 3000) {
         app_log("BLE", "Security timeout -> discovering services anyway");
         start_discovery();
     }
