@@ -133,25 +133,21 @@ void webusb_transport_init(void)
             s_resp_buf ? "PSRAM" : "ERR");
 }
 
-// Invoked by TinyUSB whenever data arrives on the vendor OUT endpoint.
-// In buffered FIFO mode the callback is delivered with a NULL buffer and the
-// bytes must be drained from the vendor FIFO.
+// Invoked by TinyUSB when data arrives on the vendor OUT endpoint.
+// The vendor class first copies the received bytes into its RX FIFO
+// (tu_edpt_stream_read_xfer_complete) and only then calls this callback, so
+// the FIFO MUST be drained here. Using the raw endpoint buffer instead would
+// leave the FIFO filling up until RX stalls (~RX_BUFSIZE bytes) and the host's
+// bulk OUT transfer hangs.
 void tud_vendor_rx_cb(uint8_t idx, const uint8_t *buffer, uint16_t bufsize)
 {
     (void)idx;
-    if (buffer && bufsize > 0) {
-        process_rx_bytes(buffer, bufsize);
-        return;
-    }
+    (void)buffer;
+    (void)bufsize;
 
     uint8_t tmp[128];
     uint32_t n;
-    uint32_t total = 0;
     while ((n = tud_vendor_read(tmp, sizeof(tmp))) > 0) {
         process_rx_bytes(tmp, n);
-        total += n;
-    }
-    if (total > 0) {
-        app_log("WEBUSB", "OUT %u", (unsigned)total);
     }
 }
