@@ -49,6 +49,7 @@ bool usb_composite_init(void)
     webusb_transport_init();
     usb_serial_init();
     uac_microphone_init();
+    usb_descriptors_init();
 
     tinyusb_config_t cfg = TINYUSB_DEFAULT_CONFIG(usb_event_cb, NULL);
     cfg.descriptor.device = &usb_device_descriptor;

@@ -13,6 +13,9 @@ extern const uint8_t            usb_config_descriptor[];
 extern const char              *usb_string_descriptors[];
 extern const int                usb_string_descriptor_count;
 
+/** @brief Fill the runtime serial number from the chip MAC (call before install). */
+void usb_descriptors_init(void);
+
 // HID report descriptor (keyboard report ID 1 + consumer report ID 2).
 extern const uint8_t usb_hid_report_descriptor[];
 extern const uint16_t usb_hid_report_descriptor_len;

@@ -5,6 +5,7 @@
 #include "tusb.h"
 #include "class/hid/hid_device.h"
 #include "class/vendor/vendor_device.h"
+#include "esp_mac.h"
 
 // ===========================================================================
 // Device descriptor
@@ -41,6 +42,20 @@ const char *usb_string_descriptors[] = {
 };
 const int usb_string_descriptor_count =
     (int)(sizeof(usb_string_descriptors) / sizeof(usb_string_descriptors[0]));
+
+// The serial number must be unique per chip. Windows keys the device instance
+// on VID/PID/serial; a fixed serial makes Windows reuse a stale, incompatible
+// registry entry ("device settings were not migrated", Code 10/28).
+static char s_serial[16];
+
+void usb_descriptors_init(void)
+{
+    uint8_t mac[6] = {0};
+    esp_efuse_mac_get_default(mac);
+    snprintf(s_serial, sizeof(s_serial), "%02X%02X%02X%02X%02X%02X",
+             mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+    usb_string_descriptors[3] = s_serial;
+}
 
 // ===========================================================================
 // HID report descriptor: keyboard (report ID 1) + consumer (report ID 2)
@@ -108,6 +123,9 @@ const uint8_t usb_config_descriptor[] = {
     // Interface number, string index, EP OUT address, EP IN address, EP size
     TUD_VENDOR_DESCRIPTOR(USB_ITF_VENDOR, 7, USB_EP_VENDOR_OUT, USB_EP_VENDOR_IN, 64),
 };
+
+TU_VERIFY_STATIC(sizeof(usb_config_descriptor) == USB_CONFIG_TOTAL_LEN,
+                 "configuration descriptor total length mismatch");
 
 // ===========================================================================
 // Binary Object Store (WebUSB + Microsoft OS 2.0)
