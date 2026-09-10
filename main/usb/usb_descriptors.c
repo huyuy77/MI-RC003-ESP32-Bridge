@@ -75,7 +75,13 @@ const uint16_t usb_hid_report_descriptor_len = sizeof(usb_hid_report_descriptor)
 //   ITF 5   : WebUSB vendor-specific bulk interface
 // ===========================================================================
 #define USB_CONFIG_TOTAL_LEN  (TUD_CONFIG_DESC_LEN + 108 + TUD_HID_DESC_LEN + \
-                               TUD_CDC_DESC_LEN + TUD_VENDOR_DESC_LEN)
+                               USB_CDC_DESC_LEN + TUD_VENDOR_DESC_LEN)
+
+// CDC ACM descriptor set WITHOUT the optional notification endpoint. The
+// ESP32-S3 DWC2 port only allows 5 IN endpoints (shared with UAC/HID/WebUSB),
+// so we free one by omitting the interrupt notification endpoint. The built-in
+// TinyUSB CDC driver accepts a CDC without it.
+#define USB_CDC_DESC_LEN  59
 
 const uint8_t usb_config_descriptor[] = {
     // Configuration number, interface count, string index, total length, attributes, power (mA)
@@ -114,10 +120,25 @@ const uint8_t usb_config_descriptor[] = {
     TUD_HID_DESCRIPTOR(USB_ITF_HID, 5, false, sizeof(usb_hid_report_descriptor),
                        USB_EP_HID_IN, 16, 5),
 
-    // -------------------- CDC debug console --------------------
-    // Interface number, string index, notification EP + size, data OUT EP, data IN EP, EP size
-    TUD_CDC_DESCRIPTOR(USB_ITF_CDC, 7, USB_EP_CDC_NOTIF, 8,
-                       USB_EP_CDC_OUT, USB_EP_CDC_IN, 64),
+    // -------------------- CDC debug console (no notification endpoint) --------------------
+    // IAD: first interface, count=2, class CDC, subclass ACM, protocol AT, iFunction=0
+    0x08, 0x0B, USB_ITF_CDC, 0x02, 0x02, 0x02, 0x01, 0x00,
+    // Control interface: class CDC, subclass ACM, protocol AT, 0 endpoints
+    0x09, 0x04, USB_ITF_CDC, 0x00, 0x00, 0x02, 0x02, 0x01, 0x00,
+    // Header functional descriptor
+    0x05, 0x24, 0x00, 0x10, 0x01,
+    // Call management functional descriptor
+    0x05, 0x24, 0x01, 0x00, 0x01,
+    // ACM functional descriptor
+    0x04, 0x24, 0x02, 0x02,
+    // Union functional descriptor (control + data interfaces)
+    0x05, 0x24, 0x06, USB_ITF_CDC, USB_ITF_CDC_DATA,
+    // Data interface: class CDC_DATA, 2 endpoints
+    0x09, 0x04, USB_ITF_CDC_DATA, 0x00, 0x02, 0x0A, 0x00, 0x00, 0x00,
+    // Data OUT endpoint (bulk)
+    0x07, 0x05, USB_EP_CDC_OUT, 0x02, 0x40, 0x00, 0x00,
+    // Data IN endpoint (bulk)
+    0x07, 0x05, USB_EP_CDC_IN, 0x02, 0x40, 0x00, 0x00,
 
     // -------------------- WebUSB vendor interface --------------------
     // Interface number, string index, EP OUT address, EP IN address, EP size
