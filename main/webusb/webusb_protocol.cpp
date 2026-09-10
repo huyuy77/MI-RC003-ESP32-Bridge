@@ -73,13 +73,14 @@ size_t webusb_protocol_handle(uint8_t cmd, const uint8_t *payload, size_t payloa
         case CMD_STATUS: {
             size_t w = (size_t)snprintf((char *)resp, resp_cap,
                 "{\"firmware\":\"%s\",\"version\":\"%s\",\"build\":\"%s\",\"uptime_sec\":%llu,"
-                "\"ble_state\":%d,\"active_layer\":%u,\"frames_decoded\":%u,"
+                "\"ble_state\":%d,\"active_layer\":%u,\"battery\":%d,\"frames_decoded\":%u,"
                 "\"samples_pushed\":%u,\"free_heap\":%u,\"free_psram\":%u,"
                 "\"usb_mounted\":%s}",
                 FIRMWARE_NAME, FIRMWARE_VERSION, FIRMWARE_BUILD,
                 (unsigned long long)(esp_timer_get_time() / 1000000),
                 (int)ble_remote_get_state(),
                 (unsigned)key_engine_get_active_layer(&g_key_engine),
+                ble_remote_get_battery(),
                 (unsigned)g_audio_pipeline.total_frames_decoded,
                 (unsigned)g_audio_pipeline.total_samples_pushed,
                 (unsigned)esp_get_free_heap_size(),

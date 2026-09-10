@@ -47,6 +47,8 @@ static const ble_uuid16_t s_uuid_hogp_svc = BLE_UUID16_INIT(0x1812);
 static const ble_uuid16_t s_uuid_hid_report = BLE_UUID16_INIT(0x2A4D);
 static const ble_uuid16_t s_uuid_hid_proto_mode = BLE_UUID16_INIT(0x2A4E);
 static const ble_uuid16_t s_uuid_hid_ctrl_point = BLE_UUID16_INIT(0x2A4C);
+static const ble_uuid16_t s_uuid_batt_level = BLE_UUID16_INIT(0x2A19);
+static const ble_uuid16_t s_uuid_batt_status = BLE_UUID16_INIT(0x2BED);
 
 // ===========================================================================
 // State
@@ -64,6 +66,10 @@ static uint16_t s_hid_report_chrs[MAX_REPORTS];
 static int s_hid_report_count = 0;
 static uint16_t s_hid_proto_chr = 0;
 static uint16_t s_hid_ctrl_chr = 0;
+static uint16_t s_batt_level_chr = 0;
+static uint16_t s_batt_status_chr = 0;
+static int      s_battery_level = -1;
+static uint32_t s_battery_last_ms = 0;
 static uint16_t s_atvv_start = 0, s_atvv_end = 0;
 static uint16_t s_hid_start = 0, s_hid_end = 0;
 
@@ -149,6 +155,7 @@ static init_phase_t s_phase = PHASE_IDLE;
 
 static void run_next_op(void);
 static uint16_t cccd_lookup(uint16_t chr_val_handle);
+static void read_battery(void);
 
 static int write_cb(uint16_t conn_handle, const struct ble_gatt_error *error,
                     struct ble_gatt_attr *attr, void *arg)
@@ -221,6 +228,7 @@ static void run_next_op(void)
             s_state = BLE_STATE_CONNECTED;
             led_indicator_set(LED_STATE_CONNECTED);
             app_log("BLE", "Remote ready: HOGP + ATVV initialized");
+            read_battery();
         }
         return;
     }
@@ -344,6 +352,11 @@ static int chr_disc_cb(uint16_t conn_handle, const struct ble_gatt_error *error,
                 s_hid_proto_chr = chr->val_handle;
             } else if (ble_uuid_cmp(u, &s_uuid_hid_ctrl_point.u) == 0) {
                 s_hid_ctrl_chr = chr->val_handle;
+            } else if (ble_uuid_cmp(u, &s_uuid_batt_level.u) == 0) {
+                s_batt_level_chr = chr->val_handle;
+                app_log("BATTERY", "Battery level char at 0x%04X", s_batt_level_chr);
+            } else if (ble_uuid_cmp(u, &s_uuid_batt_status.u) == 0) {
+                s_batt_status_chr = chr->val_handle;
             }
         }
     } else if (error->status == BLE_HS_EDONE) {
@@ -492,6 +505,39 @@ static void handle_hid_report(const uint8_t *data, size_t len)
 }
 
 // ===========================================================================
+// Battery level (Battery Service 0x180F, characteristic 0x2A19)
+// ===========================================================================
+static int battery_read_cb(uint16_t conn_handle, const struct ble_gatt_error *error,
+                           struct ble_gatt_attr *attr, void *arg)
+{
+    (void)conn_handle; (void)arg;
+    if (error->status != 0) {
+        app_log("BATTERY", "read failed: %d", error->status);
+        return 0;
+    }
+    if (attr && attr->om) {
+        uint8_t buf[8];
+        uint16_t len = OS_MBUF_PKTLEN(attr->om);
+        if (len > sizeof(buf)) len = sizeof(buf);
+        if (os_mbuf_copydata(attr->om, 0, len, buf) == 0 && len >= 1) {
+            s_battery_level = buf[0];
+            if (s_battery_level > 100) s_battery_level = 100;
+            app_log("BATTERY", "Remote battery: %d%%", s_battery_level);
+        }
+    }
+    return 0;
+}
+
+static void read_battery(void)
+{
+    if (s_conn_handle == BLE_HS_CONN_HANDLE_NONE || s_batt_level_chr == 0) {
+        return;
+    }
+    s_battery_last_ms = now_ms();
+    ble_gattc_read(s_conn_handle, s_batt_level_chr, battery_read_cb, NULL);
+}
+
+// ===========================================================================
 // GAP event handler
 // ===========================================================================
 static void add_discovered(const ble_addr_t *addr, const char *name, int8_t rssi)
@@ -632,6 +678,9 @@ static int gap_event_cb(struct ble_gap_event *event, void *arg)
             s_state = BLE_STATE_DISCONNECTED;
             s_discovery_started = false;
             s_pressed_count = 0;
+            s_batt_level_chr = 0;
+            s_batt_status_chr = 0;
+            s_battery_level = -1;
             key_engine_release_all(&g_key_engine, now_ms());
             usb_hid_keyboard_release();
             usb_hid_consumer_release();
@@ -841,6 +890,12 @@ void ble_remote_task(void)
         start_scan();
     }
 
+    // Refresh the remote battery level periodically while connected.
+    if ((s_state == BLE_STATE_CONNECTED || s_state == BLE_STATE_TALKING) &&
+        s_batt_level_chr && (now - s_battery_last_ms) > 60000) {
+        read_battery();
+    }
+
     // Persist bound remote when connected.
     if ((s_state == BLE_STATE_CONNECTED || s_state == BLE_STATE_TALKING) && s_connected_mac[0] &&
         !mac_equals(s_bound_mac, s_connected_mac)) {
@@ -928,8 +983,13 @@ size_t ble_remote_get_connected_info(char *out, size_t out_len)
     if (!out || out_len == 0) return 0;
     return (size_t)snprintf(out, out_len,
                             "{\"connected\":%s,\"state\":%d,\"name\":\"%s\",\"mac\":\"%s\","
-                            "\"bound_mac\":\"%s\",\"bound_name\":\"%s\"}",
+                            "\"bound_mac\":\"%s\",\"bound_name\":\"%s\",\"battery\":%d}",
                             (s_state >= BLE_STATE_CONNECTED) ? "true" : "false",
                             (int)s_state, s_connected_name, s_connected_mac,
-                            s_bound_mac, s_bound_name);
+                            s_bound_mac, s_bound_name, s_battery_level);
+}
+
+int ble_remote_get_battery(void)
+{
+    return s_battery_level;
 }

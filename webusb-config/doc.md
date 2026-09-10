@@ -133,10 +133,11 @@ dev.off("disconnect", handler);
 | 方法 | 返回 | 说明 |
 | :--- | :--- | :--- |
 | `deviceInfo()` | `Promise<object>` | `{ name, version, build, hardware, protocol, capabilities[] }` |
-| `status()` | `Promise<object>` | `{ firmware, version, build, uptime_sec, ble_state, active_layer, frames_decoded, samples_pushed, free_heap, free_psram, usb_mounted }` |
+| `status()` | `Promise<object>` | `{ firmware, version, build, uptime_sec, ble_state, active_layer, battery, frames_decoded, samples_pushed, free_heap, free_psram, usb_mounted }` |
 | `telemetry()` | `Promise<object>` | 最近一次按键事件 |
 
 `ble_state`：`0` 未连接 / `1` 扫描中 / `2` 连接中 / `3` 已连接 / `4` 语音中。
+`battery`：遥控器电量百分比（`0`~`100`），未知时为 `-1`。
 
 ### 按键映射
 
@@ -155,7 +156,7 @@ dev.off("disconnect", handler);
 | `bleScan()` | — | `Promise<{ devices: [{ name, mac, rssi, type }] }>` |
 | `bleConnect(target)` | `{ mac, type, name }` | `Promise<object>` |
 | `bleUnpair()` | — | `Promise<object>` |
-| `bleInfo()` | — | `Promise<{ connected, state, name, mac, bound_mac, bound_name }>` |
+| `bleInfo()` | — | `Promise<{ connected, state, name, mac, bound_mac, bound_name, battery }>` |
 | `bleReconnect()` | — | `Promise<object>` |
 
 ### 日志 / 系统

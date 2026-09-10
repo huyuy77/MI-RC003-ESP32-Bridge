@@ -42,6 +42,9 @@ void ble_remote_unpair(void);
 /** @brief Serialize connection state + bound remote info as JSON. */
 size_t ble_remote_get_connected_info(char *out, size_t out_len);
 
+/** @brief Remote battery level in percent (0-100), or -1 if unknown. */
+int ble_remote_get_battery(void);
+
 #ifdef __cplusplus
 }
 #endif

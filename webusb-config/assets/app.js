@@ -98,6 +98,7 @@
       $("st-build").textContent = s.build || "-";
       $("st-uptime").textContent = formatUptime(s.uptime_sec || 0);
       $("st-ble").textContent = ["未连接", "扫描中", "连接中", "已连接", "语音中"][s.ble_state] || s.ble_state;
+      $("st-battery").textContent = (typeof s.battery === "number" && s.battery >= 0) ? s.battery + "%" : "未知";
       $("st-layer").textContent = "层 " + (s.active_layer ?? 0);
       $("st-frames").textContent = s.frames_decoded ?? 0;
       $("st-heap").textContent = formatBytes(s.free_heap);
