@@ -315,10 +315,10 @@ main { max-width: 1000px; margin: 0 auto; padding: 26px 24px 90px; }
 }
 .dp svg { width: 22px; height: 22px; fill: currentColor; stroke: none; }
 .dp:hover { background: rgba(255, 255, 255, 0.1); color: #fff; }
-.dp.up    { top: 5px; left: 50%; transform: translateX(-50%); }
-.dp.down  { bottom: 5px; left: 50%; transform: translateX(-50%); }
-.dp.left  { left: 5px; top: 50%; transform: translateY(-50%); }
-.dp.right { right: 5px; top: 50%; transform: translateY(-50%); }
+.dp.up    { top: 2px; left: 50%; transform: translateX(-50%); }
+.dp.down  { bottom: 2px; left: 50%; transform: translateX(-50%); }
+.dp.left  { left: 2px; top: 50%; transform: translateY(-50%); }
+.dp.right { right: 2px; top: 50%; transform: translateY(-50%); }
 .dp.ok {
   top: 50%;
   left: 50%;
