@@ -281,7 +281,7 @@ main { max-width: 1000px; margin: 0 auto; padding: 26px 24px 90px; }
 
 .dpad {
   position: relative;
-  width: min(152px, 52vw);
+  width: min(138px, 47vw);
   aspect-ratio: 1;
   margin: 0 0 40px;
   padding: 6px;
@@ -291,6 +291,14 @@ main { max-width: 1000px; margin: 0 auto; padding: 26px 24px 90px; }
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   grid-template-rows: repeat(3, 1fr);
+}
+.dpad::after {
+  content: "";
+  position: absolute;
+  inset: 24%;
+  border: 1.5px solid rgba(255, 255, 255, 0.85);
+  border-radius: 50%;
+  pointer-events: none;
 }
 .dp {
   display: grid;
@@ -309,19 +317,22 @@ main { max-width: 1000px; margin: 0 auto; padding: 26px 24px 90px; }
 .dp.left  { grid-area: 2 / 1; }
 .dp.right { grid-area: 2 / 3; }
 .dp.ok {
+  position: relative;
+  z-index: 1;
   grid-area: 2 / 2;
   place-self: center;
-  width: 66%;
-  height: 66%;
+  width: 64px;
+  height: 64px;
   border-radius: 50%;
-  background: transparent;
-  border: 1.6px solid currentColor;
-  color: #a9aaad;
-  transition: color 0.15s ease, background 0.15s ease, transform 0.12s ease;
+  background: #303134;
+  border: 1px solid #48494d;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  color: #c8c9cc;
+  transition: background 0.15s ease, color 0.15s ease, transform 0.12s ease;
 }
 .dp.ok::after { display: none; }
-.dp.ok:hover { background: rgba(255, 255, 255, 0.1); color: #fff; }
-.dp.ok:active { transform: scale(0.94); }
+.dp.ok:hover { background: #3d3e42; color: #fff; }
+.dp.ok:active { transform: scale(0.95); }
 
 .remote-controls {
   width: 100%;
