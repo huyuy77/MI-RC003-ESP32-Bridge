@@ -26,12 +26,6 @@
     home: '<svg viewBox="0 0 24 24"><path d="M4 11.2 12 4l8 7.2V20H4z"/></svg>',
     menu: '<svg viewBox="0 0 24 24"><path d="M5 7h14M5 12h14M5 17h14"/></svg>',
   };
-  const DPAD_ICON = {
-    up: '<svg viewBox="0 0 24 24"><path d="M12 6.5l6 11h-12z"/></svg>',
-    down: '<svg viewBox="0 0 24 24"><path d="M12 17.5l-6-11h12z"/></svg>',
-    left: '<svg viewBox="0 0 24 24"><path d="M6.5 12l11-6v12z"/></svg>',
-    right: '<svg viewBox="0 0 24 24"><path d="M17.5 12l-11 6v-12z"/></svg>',
-  };
 
   let keymap = null;
   let activeLayer = 0;
@@ -330,22 +324,24 @@
     });
     host.appendChild(top);
 
-    // D-pad: arrows + center OK ring
+    // D-pad: four quarter-ring direction keys around a filled center OK
     const dpad = document.createElement("div");
     dpad.className = "dpad";
     [
-      ["up", 0x52, DPAD_ICON.up],
-      ["down", 0x51, DPAD_ICON.down],
-      ["left", 0x50, DPAD_ICON.left],
-      ["right", 0x4f, DPAD_ICON.right],
-      ["ok", 0x28, ""],
-    ].forEach(([cls, vk, inner]) => {
+      ["up", 0x52],
+      ["right", 0x4f],
+      ["down", 0x51],
+      ["left", 0x50],
+    ].forEach(([cls, vk]) => {
       const btn = document.createElement("button");
       btn.type = "button";
-      btn.className = "dp " + cls;
-      btn.innerHTML = inner;
+      btn.className = "arc " + cls;
       dpad.appendChild(bindBtn(btn, layer, vk));
     });
+    const ok = document.createElement("button");
+    ok.type = "button";
+    ok.className = "dp ok";
+    dpad.appendChild(bindBtn(ok, layer, 0x28));
     host.appendChild(dpad);
 
     // Controls: back | volume (2 rows) / home / menu | TV

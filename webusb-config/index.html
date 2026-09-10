@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="theme-color" content="#fbfbfd" />
   <title>MIRC003 Bridge - WebUSB 配置中心</title>
-  <link rel="stylesheet" href="assets/style.css?v=15" />
+  <link rel="stylesheet" href="assets/style.css?v=16" />
 </head>
 <body>
   <header class="topbar">
@@ -13,12 +13,12 @@
       <div class="logo">MIRC<span>003</span></div>
       <div>
         <h1>MIRC003 Bridge 配置中心</h1>
-        <p class="subtitle">小米蓝牙遥控器 2 Pro (RC003) · ESP32-S3 · WebUSB · <span id="hdr-version">固件 -</span> · <span id="webui-version">WebUI -</span></p>
+        <p class="subtitle">小米蓝牙遥控�?2 Pro (RC003) · ESP32-S3 · WebUSB · <span id="hdr-version">固件 -</span> · <span id="webui-version">WebUI -</span></p>
       </div>
     </div>
     <div class="conn">
       <span id="conn-dot" class="dot"></span>
-      <span id="conn-text">未连接</span>
+      <span id="conn-text">未连�?/span>
       <button id="btn-connect" class="btn primary">连接设备</button>
       <button id="btn-disconnect" class="btn" disabled>断开</button>
     </div>
@@ -26,39 +26,38 @@
 
   <main>
     <section id="unsupported" class="card warn hidden">
-      当前浏览器不支持 WebUSB。请使用桌面版 Chrome / Edge（Android 版 Chrome 不支持 WebUSB）。
-    </section>
+      当前浏览器不支持 WebUSB。请使用桌面�?Chrome / Edge（Android �?Chrome 不支�?WebUSB）�?    </section>
 
     <nav class="tabs">
-      <button class="tab active" data-tab="status">设备状态</button>
+      <button class="tab active" data-tab="status">设备状�?/button>
       <button class="tab" data-tab="keymap">按键映射</button>
       <button class="tab" data-tab="ble">蓝牙配对</button>
       <button class="tab" data-tab="logs">运行日志</button>
       <button class="tab" data-tab="system">系统设置</button>
     </nav>
 
-    <!-- ================= 状态 ================= -->
+    <!-- ================= 状�?================= -->
     <section class="panel active" id="panel-status">
       <div class="grid stats">
         <div class="card stat"><span class="label">固件</span><span id="st-firmware" class="value">-</span></div>
         <div class="card stat"><span class="label">版本</span><span id="st-version" class="value">-</span></div>
         <div class="card stat"><span class="label">构建时间</span><span id="st-build" class="value small">-</span></div>
         <div class="card stat"><span class="label">运行时间</span><span id="st-uptime" class="value">-</span></div>
-        <div class="card stat"><span class="label">BLE 状态</span><span id="st-ble" class="value">-</span></div>
-        <div class="card stat"><span class="label">遥控器电量</span><span id="st-battery" class="value">-</span></div>
+        <div class="card stat"><span class="label">BLE 状�?/span><span id="st-ble" class="value">-</span></div>
+        <div class="card stat"><span class="label">遥控器电�?/span><span id="st-battery" class="value">-</span></div>
         <div class="card stat"><span class="label">当前层级</span><span id="st-layer" class="value">-</span></div>
-        <div class="card stat"><span class="label">音频帧</span><span id="st-frames" class="value">-</span></div>
+        <div class="card stat"><span class="label">音频�?/span><span id="st-frames" class="value">-</span></div>
         <div class="card stat"><span class="label">空闲内存</span><span id="st-heap" class="value">-</span></div>
         <div class="card stat"><span class="label">PSRAM</span><span id="st-psram" class="value">-</span></div>
       </div>
       <div class="card">
         <div class="card-head">
-          <h3>实时按键检测</h3>
+          <h3>实时按键检�?/h3>
           <label class="check"><input type="checkbox" id="telemetry-live" checked /> 实时刷新</label>
         </div>
         <div class="live-key">
           <span class="live-label">当前按下</span>
-          <span id="live-key-name" class="live-value">—</span>
+          <span id="live-key-name" class="live-value">�?/span>
         </div>
         <pre id="telemetry" class="code">-</pre>
       </div>
@@ -71,12 +70,12 @@
           <h3>配置层级</h3>
           <div class="row">
             <button id="btn-keymap-refresh" class="btn small">读取</button>
-            <button id="btn-keymap-save" class="btn small primary">保存到设备</button>
+            <button id="btn-keymap-save" class="btn small primary">保存到设�?/button>
             <button id="btn-keymap-reset" class="btn small danger">恢复出厂</button>
           </div>
         </div>
         <div id="layer-tabs" class="layer-tabs"></div>
-        <p class="hint">点击遥控器上的按键进行单击 / 长按 / 双击行为配置。非默认层未配置的按键会自动继承默认层（穿透）。</p>
+        <p class="hint">点击遥控器上的按键进行单�?/ 长按 / 双击行为配置。非默认层未配置的按键会自动继承默认层（穿透）�?/p>
       </div>
       <div id="keymap-grid" class="keymap-grid"></div>
       <p class="remote-info" id="remote-info">将鼠标移到按键上查看映射</p>
@@ -100,7 +99,7 @@
           <h3>扫描附近设备</h3>
           <button id="btn-ble-scan" class="btn small primary">扫描</button>
         </div>
-        <p class="hint">拿起遥控器，同时按住「主页键 + 菜单键」3 秒，待指示灯快闪进入配对广播后点击扫描。</p>
+        <p class="hint">拿起遥控器，同时按住「主页键 + 菜单键�? 秒，待指示灯快闪进入配对广播后点击扫描�?/p>
         <div class="table-wrap">
           <table id="ble-table">
             <thead><tr><th>名称</th><th>MAC</th><th>RSSI</th><th></th></tr></thead>
@@ -137,14 +136,14 @@
           <button id="btn-restart" class="btn">重启设备</button>
           <button id="btn-nvs-reset" class="btn danger">恢复出厂设置 (清空 NVS)</button>
         </div>
-        <p class="hint">恢复出厂设置会清除按键映射与蓝牙绑定信息，设备将自动重启。</p>
+        <p class="hint">恢复出厂设置会清除按键映射与蓝牙绑定信息，设备将自动重启�?/p>
       </div>
       <div class="card">
         <h3>原始配置 (JSON)</h3>
-        <p class="hint">可在此直接导入 / 导出完整多层级配置。</p>
+        <p class="hint">可在此直接导�?/ 导出完整多层级配置�?/p>
         <textarea id="raw-json" class="raw" spellcheck="false"></textarea>
         <div class="row">
-          <button id="btn-json-load" class="btn small">从设备读取</button>
+          <button id="btn-json-load" class="btn small">从设备读�?/button>
           <button id="btn-json-apply" class="btn small primary">写入设备</button>
         </div>
       </div>
@@ -169,6 +168,6 @@
   <div id="toast" class="toast hidden"></div>
 
   <script src="assets/mirc003.js?v=2"></script>
-  <script src="assets/app.js?v=24"></script>
+  <script src="assets/app.js?v=25"></script>
 </body>
 </html>

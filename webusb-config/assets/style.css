@@ -284,44 +284,41 @@ main { max-width: 1000px; margin: 0 auto; padding: 26px 24px 90px; }
   width: min(150px, 50vw);
   aspect-ratio: 1;
   margin: 0 0 40px;
-  border-radius: 50%;
-  background: #27282a;
-  border: 1px solid #343538;
 }
-.dp {
+/* four quarter-ring direction keys */
+.arc {
   position: absolute;
-  width: 36px;
-  height: 36px;
-  display: grid;
-  place-items: center;
-  background: transparent;
-  border: none;
+  inset: 0;
   border-radius: 50%;
-  color: #a9aaad;
+  border: 22px solid transparent;
+  background: transparent;
   cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease;
+  color: #3a3b3e;
+  transition: color 0.15s ease;
 }
-.dp svg { width: 22px; height: 22px; fill: currentColor; stroke: none; }
-.dp:hover { background: rgba(255, 255, 255, 0.12); color: #fff; }
-.dp.up    { top: 0; left: 50%; transform: translateX(-50%); }
-.dp.down  { bottom: 0; left: 50%; transform: translateX(-50%); }
-.dp.left  { left: 0; top: 50%; transform: translateY(-50%); }
-.dp.right { right: 0; top: 50%; transform: translateY(-50%); }
-/* The whole area inside the white ring is the OK key. */
+.arc.up    { border-top-color: currentColor; }
+.arc.right { border-right-color: currentColor; }
+.arc.down  { border-bottom-color: currentColor; }
+.arc.left  { border-left-color: currentColor; }
+.arc:hover { color: #56585d; }
+.arc:active { color: #6b6d73; }
+/* OK key fills the whole area inside the white ring */
 .dp.ok {
+  position: absolute;
   top: 50%;
   left: 50%;
-  width: 52%;
-  height: 52%;
+  width: 60%;
+  height: 60%;
   transform: translate(-50%, -50%);
   background: linear-gradient(180deg, #34353a, #2a2b2e);
-  border: 1.5px solid rgba(255, 255, 255, 0.75);
+  border: 1.5px solid rgba(255, 255, 255, 0.8);
   border-radius: 50%;
   color: #c8c9cc;
+  cursor: pointer;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  transition: background 0.15s ease, color 0.15s ease, transform 0.12s ease;
 }
-.dp.ok::after { display: none; }
-.dp.ok:hover { background: linear-gradient(180deg, #3f4045, #333438); color: #fff; transform: translate(-50%, -50%) scale(1.04); }
+.dp.ok:hover { background: linear-gradient(180deg, #3f4045, #333438); color: #fff; transform: translate(-50%, -50%) scale(1.03); }
 .dp.ok:active { transform: translate(-50%, -50%) scale(0.96); }
 
 .remote-controls {
