@@ -23,6 +23,7 @@ static QueueHandle_t s_req_queue = NULL;
 static SemaphoreHandle_t s_rx_mutex = NULL;
 static uint8_t *s_rx_acc = NULL;
 static size_t s_rx_len = 0;
+static uint8_t *s_tx_buf = NULL;   // header + payload sent as one transfer
 
 static void write_all(const uint8_t *data, size_t len)
 {
@@ -46,7 +47,7 @@ static void write_all(const uint8_t *data, size_t len)
 
 bool webusb_transport_send(uint8_t cmd, uint8_t status, const uint8_t *payload, size_t len)
 {
-    if (!tud_mounted()) {
+    if (!tud_mounted() || !s_tx_buf) {
         app_log("WEBUSB", "TX cmd=0x%02X dropped (not mounted)", cmd);
         return false;
     }
@@ -54,18 +55,20 @@ bool webusb_transport_send(uint8_t cmd, uint8_t status, const uint8_t *payload, 
         len = WEBUSB_MAX_PAYLOAD;
     }
 
-    uint8_t header[WEBUSB_FRAME_HEADER_LEN] = {
-        WEBUSB_FRAME_SOF0,
-        WEBUSB_FRAME_SOF1,
-        cmd,
-        status,
-        (uint8_t)(len & 0xFF),
-        (uint8_t)((len >> 8) & 0xFF),
-    };
-    write_all(header, sizeof(header));
+    // Build the whole frame in one buffer so it is emitted as a single USB
+    // transfer (avoids a separate short header packet / ZLP that can confuse
+    // the browser's frame reader).
+    s_tx_buf[0] = WEBUSB_FRAME_SOF0;
+    s_tx_buf[1] = WEBUSB_FRAME_SOF1;
+    s_tx_buf[2] = cmd;
+    s_tx_buf[3] = status;
+    s_tx_buf[4] = (uint8_t)(len & 0xFF);
+    s_tx_buf[5] = (uint8_t)((len >> 8) & 0xFF);
     if (len > 0 && payload) {
-        write_all(payload, len);
+        memcpy(s_tx_buf + WEBUSB_FRAME_HEADER_LEN, payload, len);
     }
+
+    write_all(s_tx_buf, WEBUSB_FRAME_HEADER_LEN + len);
     app_log("WEBUSB", "TX cmd=0x%02X status=%u len=%u", cmd, status, (unsigned)len);
     return true;
 }
@@ -164,8 +167,11 @@ void webusb_transport_init(void)
     s_req_queue = xQueueCreate(4, sizeof(webusb_request_t *));
     s_rx_acc = (uint8_t *)heap_caps_malloc(WEBUSB_FRAME_HEADER_LEN + WEBUSB_MAX_PAYLOAD,
                                            MALLOC_CAP_SPIRAM);
+    s_tx_buf = (uint8_t *)heap_caps_malloc(WEBUSB_FRAME_HEADER_LEN + WEBUSB_MAX_PAYLOAD,
+                                           MALLOC_CAP_SPIRAM);
     xTaskCreatePinnedToCore(webusb_task, "webusb", 8192, NULL, 4, NULL, TASK_CORE_USB);
-    app_log("WEBUSB", "Transport ready (rx buffer in %s)", s_rx_acc ? "PSRAM" : "internal RAM");
+    app_log("WEBUSB", "Transport ready (rx=%s tx=%s)",
+            s_rx_acc ? "PSRAM" : "ERR", s_tx_buf ? "PSRAM" : "ERR");
 }
 
 // Invoked by TinyUSB whenever data arrives on the vendor OUT endpoint.

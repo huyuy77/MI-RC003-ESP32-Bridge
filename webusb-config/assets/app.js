@@ -105,6 +105,8 @@ async function connect() {
     if (!claimed || !outEndpoint || !inEndpoint) {
       throw new Error("未找到 WebUSB 厂商接口");
     }
+    console.log("[WebUSB] claimed interface, OUT ep=0x" + outEndpoint.endpointNumber.toString(16) +
+                ", IN ep=0x" + inEndpoint.endpointNumber.toString(16));
     setConnected(true);
     toast("设备已连接");
     await loadDeviceInfo();
@@ -165,7 +167,7 @@ async function readFrame() {
     }
     const result = await device.transferIn(inEndpoint.endpointNumber, CHUNK);
     if (result.status !== "ok" || !result.data) {
-      throw new Error("USB 读取失败");
+      throw new Error("USB 读取失败: " + result.status);
     }
     const chunk = new Uint8Array(result.data.buffer, result.data.byteOffset, result.data.byteLength);
     const merged = new Uint8Array(rxBuffer.length + chunk.length);
@@ -175,7 +177,19 @@ async function readFrame() {
   }
 }
 
-async function command(cmd, payloadObj) {
+// All USB transfers are serialized through this chain: the status and log
+// auto-refresh timers would otherwise run overlapping readFrame() loops and
+// corrupt each other's framing.
+let cmdChain = Promise.resolve();
+
+function command(cmd, payloadObj) {
+  const run = () => commandImpl(cmd, payloadObj);
+  const p = cmdChain.then(run, run);
+  cmdChain = p.catch(() => {});
+  return p;
+}
+
+async function commandImpl(cmd, payloadObj) {
   if (!device || !outEndpoint) throw new Error("设备未连接");
   const payload = payloadObj ? new TextEncoder().encode(JSON.stringify(payloadObj)) : new Uint8Array(0);
   await device.transferOut(outEndpoint.endpointNumber, buildFrame(cmd, payload));
