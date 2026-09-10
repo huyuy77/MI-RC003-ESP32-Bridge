@@ -10,7 +10,7 @@ static const char *TAG = "NVS";
 // Bump this whenever the on-flash layout changes in a way that is not
 // backward compatible (e.g. migrating from the Arduino RemoteMapper firmware,
 // whose NimBLE bond structs have a different size).
-#define NVS_SCHEMA "3"
+#define NVS_SCHEMA "4"
 
 esp_err_t config_store_init(void)
 {

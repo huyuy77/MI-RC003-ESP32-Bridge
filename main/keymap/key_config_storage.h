@@ -14,6 +14,9 @@ void key_config_storage_init(key_mapper_engine_t *engine);
 /** @brief Persist the current keymap to NVS. */
 bool key_config_storage_save(key_mapper_engine_t *engine);
 
+/** @brief Request a deferred (post-response) keymap save. */
+void key_config_storage_request_save(void);
+
 /** @brief Load the keymap from NVS (does not apply defaults on failure). */
 bool key_config_storage_load(key_mapper_engine_t *engine);
 

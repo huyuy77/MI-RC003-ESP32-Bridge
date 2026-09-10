@@ -114,8 +114,9 @@ size_t webusb_protocol_handle(uint8_t cmd, const uint8_t *payload, size_t payloa
                 *status = WEBUSB_ERR_ARG;
                 return ok(resp, resp_cap, "{\"error\":\"invalid_keymap_format\"}");
             }
-            bool saved = key_config_storage_save(&g_key_engine);
-            return ok(resp, resp_cap, saved ? "{\"status\":\"saved\"}" : "{\"error\":\"save_failed\"}");
+            // Persist asynchronously so the flash write does not stall the reply.
+            key_config_storage_request_save();
+            return ok(resp, resp_cap, "{\"status\":\"saved\"}");
         }
 
         case CMD_KEYMAP_RESET:

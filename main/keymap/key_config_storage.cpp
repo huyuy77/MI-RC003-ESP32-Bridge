@@ -10,8 +10,30 @@
 #include <ArduinoJson.h>
 #include "esp_heap_caps.h"
 #include "nvs.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "freertos/semphr.h"
 
 #define KEYMAP_NS "keymap_conf"
+
+extern key_mapper_engine_t g_key_engine;
+
+// Compact per-layer blob: header + only the used bindings (instead of a fixed
+// 16-slot array), which cuts the NVS write from ~5.6 KB to ~1 KB.
+#define LAYER_BLOB_MAGIC 0x4D4C5941u
+
+typedef struct __attribute__((packed)) {
+    uint32_t magic;
+    uint8_t  binding_count;
+    uint8_t  type;
+    uint16_t timeout_sec;
+    uint32_t led_color;
+    char     name[MAX_LAYER_NAME_LEN];
+} layer_hdr_t;
+
+#define LAYER_BLOB_MAX (sizeof(layer_hdr_t) + MAX_KEY_BINDINGS * sizeof(key_binding_t))
+
+static SemaphoreHandle_t s_save_sem = NULL;
 
 static void layer_key(char *buf, size_t buf_len, int idx)
 {
@@ -235,20 +257,42 @@ bool key_config_storage_save(key_mapper_engine_t *engine)
 {
     if (!engine) return false;
 
-    // Write every layer through a single NVS handle and commit once, to keep
-    // the flash write (cache-off) window short.
+    uint8_t *buf = (uint8_t *)heap_caps_malloc(LAYER_BLOB_MAX, MALLOC_CAP_SPIRAM);
+    if (!buf) {
+        app_log("KEYMAP", "no memory for save");
+        return false;
+    }
+
     nvs_handle_t h;
     if (nvs_open(KEYMAP_NS, NVS_READWRITE, &h) != ESP_OK) {
-        app_log("KEYMAP", "nvs_open(%s) failed", KEYMAP_NS);
+        heap_caps_free(buf);
+        app_log("KEYMAP", "nvs_open failed");
         return false;
     }
 
     key_engine_lock();
     bool ok = true;
     for (int i = 0; i < MAX_LAYERS; i++) {
+        key_layer_t *layer = &engine->layers[i];
+        layer_hdr_t *hdr = (layer_hdr_t *)buf;
+        hdr->magic = LAYER_BLOB_MAGIC;
+        hdr->binding_count = (uint8_t)layer->binding_count;
+        hdr->type = (uint8_t)layer->type;
+        hdr->timeout_sec = layer->timeout_sec;
+        hdr->led_color = layer->led_color;
+        memset(hdr->name, 0, sizeof(hdr->name));
+        strncpy(hdr->name, layer->name, sizeof(hdr->name) - 1);
+
+        size_t blen = sizeof(layer_hdr_t);
+        if (layer->binding_count > 0) {
+            size_t bbytes = layer->binding_count * sizeof(key_binding_t);
+            memcpy(buf + sizeof(layer_hdr_t), layer->bindings, bbytes);
+            blen += bbytes;
+        }
+
         char key[8];
         layer_key(key, sizeof(key), i);
-        if (nvs_set_blob(h, key, &engine->layers[i], sizeof(key_layer_t)) != ESP_OK) {
+        if (nvs_set_blob(h, key, buf, blen) != ESP_OK) {
             app_log("KEYMAP", "NVS write failed for %s", key);
             ok = false;
         }
@@ -257,13 +301,12 @@ bool key_config_storage_save(key_mapper_engine_t *engine)
     nvs_set_blob(h, "active", &active, 1);
     key_engine_unlock();
 
-    if (ok) {
-        if (nvs_commit(h) != ESP_OK) {
-            app_log("KEYMAP", "NVS commit failed");
-            ok = false;
-        }
+    if (ok && nvs_commit(h) != ESP_OK) {
+        app_log("KEYMAP", "NVS commit failed");
+        ok = false;
     }
     nvs_close(h);
+    heap_caps_free(buf);
 
     if (ok) {
         app_log("KEYMAP", "Keymap saved to NVS");
@@ -275,29 +318,64 @@ bool key_config_storage_load(key_mapper_engine_t *engine)
 {
     if (!engine) return false;
 
+    uint8_t *buf = (uint8_t *)heap_caps_malloc(LAYER_BLOB_MAX, MALLOC_CAP_SPIRAM);
     key_layer_t *tmp = (key_layer_t *)heap_caps_malloc(sizeof(key_layer_t) * MAX_LAYERS,
                                                        MALLOC_CAP_SPIRAM);
-    if (!tmp) {
-        app_log("KEYMAP", "no memory for keymap load");
+    if (!buf || !tmp) {
+        if (buf) heap_caps_free(buf);
+        if (tmp) heap_caps_free(tmp);
+        key_engine_load_defaults(engine);
         return false;
     }
 
-    for (int i = 0; i < MAX_LAYERS; i++) {
+    nvs_handle_t h;
+    if (nvs_open(KEYMAP_NS, NVS_READONLY, &h) != ESP_OK) {
+        heap_caps_free(buf);
+        heap_caps_free(tmp);
+        key_engine_load_defaults(engine);
+        return false;
+    }
+
+    bool ok = true;
+    for (int i = 0; i < MAX_LAYERS && ok; i++) {
         char key[8];
         layer_key(key, sizeof(key), i);
-        size_t n = config_store_get_blob(KEYMAP_NS, key, &tmp[i], sizeof(key_layer_t));
-        if (n != sizeof(key_layer_t)) {
-            app_log("KEYMAP", "Stored layer %d missing/invalid (%u bytes)", i, (unsigned)n);
-            heap_caps_free(tmp);
-            key_engine_load_defaults(engine);
-            return false;
+        size_t len = LAYER_BLOB_MAX;
+        if (nvs_get_blob(h, key, buf, &len) != ESP_OK || len < sizeof(layer_hdr_t)) {
+            ok = false;
+            break;
+        }
+        layer_hdr_t *hdr = (layer_hdr_t *)buf;
+        if (hdr->magic != LAYER_BLOB_MAGIC || hdr->binding_count > MAX_KEY_BINDINGS) {
+            ok = false;
+            break;
+        }
+        key_layer_t *layer = &tmp[i];
+        memset(layer, 0, sizeof(*layer));
+        strncpy(layer->name, hdr->name, sizeof(layer->name) - 1);
+        layer->type = (layer_type_t)hdr->type;
+        layer->timeout_sec = hdr->timeout_sec;
+        layer->led_color = hdr->led_color;
+        layer->binding_count = hdr->binding_count;
+        if (hdr->binding_count > 0) {
+            memcpy(layer->bindings, buf + sizeof(layer_hdr_t),
+                   hdr->binding_count * sizeof(key_binding_t));
         }
     }
 
     uint8_t active = 0;
-    config_store_get_blob(KEYMAP_NS, "active", &active, 1);
-    if (active >= MAX_LAYERS) {
+    size_t alen = 1;
+    if (nvs_get_blob(h, "active", &active, &alen) != ESP_OK || active >= MAX_LAYERS) {
         active = 0;
+    }
+    nvs_close(h);
+
+    if (!ok) {
+        heap_caps_free(buf);
+        heap_caps_free(tmp);
+        app_log("KEYMAP", "Stored keymap missing/invalid, using defaults");
+        key_engine_load_defaults(engine);
+        return false;
     }
 
     key_engine_lock();
@@ -308,13 +386,38 @@ bool key_config_storage_load(key_mapper_engine_t *engine)
     uint32_t color = engine->layers[active].led_color;
     key_engine_unlock();
 
+    heap_caps_free(buf);
     heap_caps_free(tmp);
     led_indicator_set_layer_color(color);
     return true;
 }
 
+// Deferred save: the WebUSB task responds first, then this task writes to
+// flash ~150 ms later so the NVS flash operation does not stall the USB reply.
+static void keymap_save_task(void *arg)
+{
+    (void)arg;
+    while (1) {
+        if (xSemaphoreTake(s_save_sem, portMAX_DELAY) == pdTRUE) {
+            vTaskDelay(pdMS_TO_TICKS(150));
+            key_config_storage_save(&g_key_engine);
+        }
+    }
+}
+
+void key_config_storage_request_save(void)
+{
+    if (s_save_sem) {
+        xSemaphoreGive(s_save_sem);
+    }
+}
+
 void key_config_storage_init(key_mapper_engine_t *engine)
 {
+    if (!s_save_sem) {
+        s_save_sem = xSemaphoreCreateBinary();
+        xTaskCreate(keymap_save_task, "keymap_save", 4096, NULL, 3, NULL);
+    }
     if (key_config_storage_load(engine)) {
         app_log("KEYMAP", "Loaded custom keymap from NVS (active layer %u)",
                 (unsigned)engine->active_layer);
