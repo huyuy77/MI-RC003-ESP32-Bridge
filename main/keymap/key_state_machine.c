@@ -6,7 +6,7 @@
 
 static SemaphoreHandle_t s_key_engine_mutex = NULL;
 
-static void key_engine_lock(void)
+void key_engine_lock(void)
 {
     if (!s_key_engine_mutex) {
         s_key_engine_mutex = xSemaphoreCreateRecursiveMutex();
@@ -16,7 +16,7 @@ static void key_engine_lock(void)
     }
 }
 
-static void key_engine_unlock(void)
+void key_engine_unlock(void)
 {
     if (s_key_engine_mutex) {
         xSemaphoreGiveRecursive(s_key_engine_mutex);

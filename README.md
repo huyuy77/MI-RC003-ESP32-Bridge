@@ -52,13 +52,22 @@ USB 复合设备转发到 Windows，并使用 **浏览器 WebUSB** 完成设备�
                                                      └────────────────────────┘
 ```
 
-USB 复合设备包含 4 个接口：
+USB 复合设备包含 6 个接口：
 
 | 接口 | 类 | 端点 | 说明 |
 | :--- | :--- | :--- | :--- |
 | 0 / 1 | Audio (UAC 1.0) | ISO IN `0x81` | 16 kHz / 16-bit / 单声道麦克风 |
 | 2 | HID | INT IN `0x82` | 键盘（Report ID 1）+ 多媒体（Report ID 2） |
-| 3 | Vendor (WebUSB) | BULK OUT `0x03` / BULK IN `0x83` | 配置命令通道 |
+| 3 / 4 | CDC (ACM) | INT IN `0x83` / BULK OUT `0x03` / BULK IN `0x84` | **调试串口**（同一根 USB 线即可查看日志） |
+| 5 | Vendor (WebUSB) | BULK OUT `0x04` / BULK IN `0x85` | WebUSB 配置通道 |
+
+> **烧录与调试**
+> * 复合设备占用的是 ESP32-S3 的**原生 USB（GPIO19/20，OTG）**口，运行时它同时提供
+>   麦克风、键盘、调试串口和 WebUSB。
+> * 运行时可在设备管理器中看到 `MIRC003 Console` 串口，直接用串口助手（115200）查看日志。
+> * 若要通过该 USB 口**烧录固件**：按住开发板 `BOOT` 键，点按一下 `RST`，松开 `BOOT`，
+>   芯片会进入 ROM 的 USB-Serial-JTAG 引导模式，然后执行 `idf.py -p COMx flash` 即可。
+> * 也可继续使用板载 UART 口（GPIO43/44）烧录与查看日志，二者互不影响。
 
 ---
 
@@ -253,6 +262,18 @@ MIRC003-bridge-esp32/
 * 页面必须运行在 `https://` 或 `http://localhost`（安全上下文）。
 * 关闭可能占用该设备的其他程序（如串口助手、Zadig）。
 * 首次使用需在弹窗中选择 `MIRC003 Remote Bridge`。
+
+### 修改按键映射后页面无响应 / 不生效
+
+已修复：WebUSB 单帧上限提升到 32 KB，按键配置改为**按层二进制存储**到 NVS
+（NVS 单个值上限约 4 KB，之前的整段 JSON 会超限），并在应用配置时对按键引擎加锁。
+配置过程与结果会打印到串口：
+
+```
+[KEYMAP] Saving keymap (NNNN bytes)
+[KEYMAP] Keymap applied from JSON
+[KEYMAP] Keymap saved to NVS
+```
 
 ### 语音键没有声音 / 输入法无法采集
 

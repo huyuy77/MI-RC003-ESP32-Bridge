@@ -1,5 +1,6 @@
 #include "key_config_storage.h"
 #include "app_log.h"
+#include "led/led_indicator.h"
 #include "storage/config_store.h"
 
 #include <string.h>
@@ -8,9 +9,12 @@
 #include <string>
 #include <ArduinoJson.h>
 
-#define KEYMAP_NS   "keymap_conf"
-#define KEYMAP_KEY  "cfg_json"
-#define KEYMAP_JSON_MAX 8192
+#define KEYMAP_NS "keymap_conf"
+
+static void layer_key(char *buf, size_t buf_len, int idx)
+{
+    snprintf(buf, buf_len, "layer%d", idx);
+}
 
 static uint32_t parse_u32_or_hex(JsonVariant v, uint32_t default_val = 0)
 {
@@ -166,13 +170,19 @@ bool key_config_from_json(key_mapper_engine_t *engine, const char *json_str)
         return false;
     }
 
+    // Parse into a scratch copy so the live engine is never half-updated.
+    key_layer_t tmp[MAX_LAYERS];
+    key_engine_lock();
+    memcpy(tmp, engine->layers, sizeof(tmp));
+    key_engine_unlock();
+
+    bool applied = false;
     if (doc["layers"].is<JsonArray>()) {
-        JsonArray layers_arr = doc["layers"].as<JsonArray>();
-        for (JsonObject l_obj : layers_arr) {
+        for (JsonObject l_obj : doc["layers"].as<JsonArray>()) {
             uint8_t id = (uint8_t)parse_u32_or_hex(l_obj["id"], 0);
             if (id >= MAX_LAYERS) continue;
 
-            key_layer_t *layer = &engine->layers[id];
+            key_layer_t *layer = &tmp[id];
             if (!l_obj["name"].isNull()) {
                 std::string nm = l_obj["name"].as<std::string>();
                 strncpy(layer->name, nm.c_str(), sizeof(layer->name) - 1);
@@ -188,67 +198,83 @@ bool key_config_from_json(key_mapper_engine_t *engine, const char *json_str)
                 parse_bindings_array(b_arr, layer);
             }
         }
-        app_log("KEYMAP", "Loaded multi-layer keymap from JSON");
-        return true;
+        applied = true;
+    } else if (doc["bindings"].is<JsonArray>()) {
+        parse_bindings_array(doc["bindings"].as<JsonArray>(), &tmp[0]);
+        applied = true;
     }
 
-    // Legacy single-layer schema: root "bindings" array.
-    if (doc["bindings"].is<JsonArray>()) {
-        parse_bindings_array(doc["bindings"].as<JsonArray>(), &engine->layers[0]);
-        app_log("KEYMAP", "Migrated legacy single-layer keymap into Layer 0");
-        return true;
+    if (!applied) {
+        return false;
     }
 
-    return false;
+    key_engine_lock();
+    memcpy(engine->layers, tmp, sizeof(tmp));
+    engine->layer_count = MAX_LAYERS;
+    memset(engine->states, 0, sizeof(engine->states));
+    uint32_t color = engine->layers[engine->active_layer].led_color;
+    key_engine_unlock();
+
+    led_indicator_set_layer_color(color);
+    app_log("KEYMAP", "Keymap applied from JSON");
+    return true;
 }
 
 bool key_config_storage_save(key_mapper_engine_t *engine)
 {
     if (!engine) return false;
 
-    char *json = (char *)malloc(KEYMAP_JSON_MAX);
-    if (!json) return false;
-
-    size_t len = key_config_to_json(engine, json, KEYMAP_JSON_MAX);
-    if (len == 0) {
-        free(json);
-        app_log("KEYMAP", "Failed to serialize keymap for NVS");
-        return false;
+    key_engine_lock();
+    bool ok = true;
+    for (int i = 0; i < MAX_LAYERS; i++) {
+        char key[8];
+        layer_key(key, sizeof(key), i);
+        if (config_store_set_blob(KEYMAP_NS, key, &engine->layers[i], sizeof(key_layer_t)) != ESP_OK) {
+            app_log("KEYMAP", "NVS write failed for %s", key);
+            ok = false;
+        }
     }
+    uint8_t active = engine->active_layer;
+    config_store_set_blob(KEYMAP_NS, "active", &active, 1);
+    key_engine_unlock();
 
-    esp_err_t err = config_store_set_str(KEYMAP_NS, KEYMAP_KEY, json);
-    free(json);
-
-    if (err != ESP_OK) {
-        app_log("KEYMAP", "NVS write failed: %d", err);
-        return false;
+    if (ok) {
+        app_log("KEYMAP", "Keymap saved to NVS");
     }
-    app_log("KEYMAP", "Keymap saved to NVS (%u bytes)", (unsigned)len);
-    return true;
+    return ok;
 }
 
 bool key_config_storage_load(key_mapper_engine_t *engine)
 {
     if (!engine) return false;
 
-    char *json = (char *)malloc(KEYMAP_JSON_MAX);
-    if (!json) return false;
-
-    size_t len = config_store_get_str(KEYMAP_NS, KEYMAP_KEY, json, KEYMAP_JSON_MAX);
-    if (len == 0) {
-        free(json);
-        key_engine_load_defaults(engine);
-        return false;
+    key_layer_t tmp[MAX_LAYERS];
+    for (int i = 0; i < MAX_LAYERS; i++) {
+        char key[8];
+        layer_key(key, sizeof(key), i);
+        size_t n = config_store_get_blob(KEYMAP_NS, key, &tmp[i], sizeof(key_layer_t));
+        if (n != sizeof(key_layer_t)) {
+            app_log("KEYMAP", "Stored layer %d missing/invalid (%u bytes)", i, (unsigned)n);
+            key_engine_load_defaults(engine);
+            return false;
+        }
     }
 
-    bool ok = key_config_from_json(engine, json);
-    free(json);
-
-    if (!ok || engine->layers[0].binding_count == 0) {
-        app_log("KEYMAP", "Stored keymap invalid -> falling back to defaults");
-        key_engine_load_defaults(engine);
-        return false;
+    uint8_t active = 0;
+    config_store_get_blob(KEYMAP_NS, "active", &active, 1);
+    if (active >= MAX_LAYERS) {
+        active = 0;
     }
+
+    key_engine_lock();
+    memcpy(engine->layers, tmp, sizeof(tmp));
+    engine->layer_count = MAX_LAYERS;
+    engine->active_layer = active;
+    memset(engine->states, 0, sizeof(engine->states));
+    uint32_t color = engine->layers[active].led_color;
+    key_engine_unlock();
+
+    led_indicator_set_layer_color(color);
     return true;
 }
 
@@ -265,8 +291,19 @@ void key_config_storage_init(key_mapper_engine_t *engine)
 void key_config_storage_reset_defaults(key_mapper_engine_t *engine)
 {
     if (!engine) return;
-    config_store_erase_key(KEYMAP_NS, KEYMAP_KEY);
+    for (int i = 0; i < MAX_LAYERS; i++) {
+        char key[8];
+        layer_key(key, sizeof(key), i);
+        config_store_erase_key(KEYMAP_NS, key);
+    }
+    config_store_erase_key(KEYMAP_NS, "active");
+
+    key_engine_lock();
     key_engine_load_defaults(engine);
+    uint32_t color = engine->layers[engine->active_layer].led_color;
+    key_engine_unlock();
+
+    led_indicator_set_layer_color(color);
     app_log("KEYMAP", "Keymap reset to factory defaults");
 }
 

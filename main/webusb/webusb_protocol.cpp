@@ -99,16 +99,17 @@ size_t webusb_protocol_handle(uint8_t cmd, const uint8_t *payload, size_t payloa
                 *status = WEBUSB_ERR_ARG;
                 return ok(resp, resp_cap, "{\"error\":\"missing_body\"}");
             }
-            char *json = (char *)malloc(payload_len + 1);
+            char *json = (char *)heap_caps_malloc(payload_len + 1, MALLOC_CAP_SPIRAM);
             if (!json) {
                 *status = WEBUSB_ERR_INTERNAL;
-                return 0;
+                return ok(resp, resp_cap, "{\"error\":\"no_mem\"}");
             }
             memcpy(json, payload, payload_len);
             json[payload_len] = '\0';
 
+            app_log("KEYMAP", "Saving keymap (%u bytes)", (unsigned)payload_len);
             bool parsed = key_config_from_json(&g_key_engine, json);
-            free(json);
+            heap_caps_free(json);
             if (!parsed) {
                 *status = WEBUSB_ERR_ARG;
                 return ok(resp, resp_cap, "{\"error\":\"invalid_keymap_format\"}");
@@ -132,17 +133,17 @@ size_t webusb_protocol_handle(uint8_t cmd, const uint8_t *payload, size_t payloa
                 *status = WEBUSB_ERR_ARG;
                 return ok(resp, resp_cap, "{\"error\":\"missing_body\"}");
             }
-            char *json = (char *)malloc(payload_len + 1);
+            char *json = (char *)heap_caps_malloc(payload_len + 1, MALLOC_CAP_SPIRAM);
             if (!json) {
                 *status = WEBUSB_ERR_INTERNAL;
-                return 0;
+                return ok(resp, resp_cap, "{\"error\":\"no_mem\"}");
             }
             memcpy(json, payload, payload_len);
             json[payload_len] = '\0';
 
             JsonDocument doc;
             DeserializationError err = deserializeJson(doc, json);
-            free(json);
+            heap_caps_free(json);
             if (err) {
                 *status = WEBUSB_ERR_ARG;
                 return ok(resp, resp_cap, "{\"error\":\"invalid_json\"}");

@@ -277,9 +277,13 @@ async function loadKeymap() {
 
 async function saveKeymap() {
   try {
-    await command(CMD.KEYMAP_SAVE, keymap);
-    $("raw-json").value = JSON.stringify(keymap, null, 2);
+    const res = await command(CMD.KEYMAP_SAVE, keymap);
+    if (res && res.error) {
+      toast("保存失败: " + res.error, true);
+      return;
+    }
     toast("按键配置已保存");
+    await loadKeymap();
   } catch (e) {
     toast("保存失败: " + e.message, true);
   }

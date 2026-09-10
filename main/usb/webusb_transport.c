@@ -9,6 +9,7 @@
 #include "freertos/task.h"
 #include "freertos/queue.h"
 #include "freertos/semphr.h"
+#include "esp_heap_caps.h"
 #include "tusb.h"
 #include "class/vendor/vendor_device.h"
 
@@ -20,7 +21,7 @@ typedef struct {
 
 static QueueHandle_t s_req_queue = NULL;
 static SemaphoreHandle_t s_rx_mutex = NULL;
-static uint8_t s_rx_acc[WEBUSB_FRAME_HEADER_LEN + WEBUSB_MAX_PAYLOAD];
+static uint8_t *s_rx_acc = NULL;
 static size_t s_rx_len = 0;
 
 static void write_all(const uint8_t *data, size_t len)
@@ -63,7 +64,7 @@ bool webusb_transport_send(uint8_t cmd, uint8_t status, const uint8_t *payload, 
 
 static void handle_request(webusb_request_t *req)
 {
-    uint8_t *resp = (uint8_t *)malloc(WEBUSB_MAX_PAYLOAD);
+    uint8_t *resp = (uint8_t *)heap_caps_malloc(WEBUSB_MAX_PAYLOAD, MALLOC_CAP_SPIRAM);
     if (!resp) {
         webusb_transport_send(req->cmd, 3, NULL, 0);
         return;
@@ -92,12 +93,12 @@ static void webusb_task(void *arg)
 
 static void process_rx_bytes(const uint8_t *data, size_t len)
 {
-    if (!s_rx_mutex) {
+    if (!s_rx_mutex || !s_rx_acc) {
         return;
     }
     xSemaphoreTake(s_rx_mutex, portMAX_DELAY);
 
-    if (s_rx_len + len > sizeof(s_rx_acc)) {
+    if (s_rx_len + len > (WEBUSB_FRAME_HEADER_LEN + WEBUSB_MAX_PAYLOAD)) {
         s_rx_len = 0;
     }
     memcpy(s_rx_acc + s_rx_len, data, len);
@@ -122,7 +123,7 @@ static void process_rx_bytes(const uint8_t *data, size_t len)
             break; // wait for more bytes
         }
 
-        webusb_request_t *req = (webusb_request_t *)malloc(sizeof(webusb_request_t));
+        webusb_request_t *req = (webusb_request_t *)heap_caps_malloc(sizeof(webusb_request_t), MALLOC_CAP_SPIRAM);
         if (req) {
             req->cmd = cmd;
             req->len = payload_len;
@@ -152,8 +153,10 @@ void webusb_transport_init(void)
     s_rx_len = 0;
     s_rx_mutex = xSemaphoreCreateMutex();
     s_req_queue = xQueueCreate(4, sizeof(webusb_request_t *));
-    xTaskCreatePinnedToCore(webusb_task, "webusb", 6144, NULL, 4, NULL, TASK_CORE_USB);
-    app_log("WEBUSB", "Transport ready");
+    s_rx_acc = (uint8_t *)heap_caps_malloc(WEBUSB_FRAME_HEADER_LEN + WEBUSB_MAX_PAYLOAD,
+                                           MALLOC_CAP_SPIRAM);
+    xTaskCreatePinnedToCore(webusb_task, "webusb", 8192, NULL, 4, NULL, TASK_CORE_USB);
+    app_log("WEBUSB", "Transport ready (rx buffer in %s)", s_rx_acc ? "PSRAM" : "internal RAM");
 }
 
 // Invoked by TinyUSB whenever data arrives on the vendor OUT endpoint.

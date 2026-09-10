@@ -22,6 +22,12 @@ size_t config_store_get_str(const char *ns, const char *key, char *out, size_t o
 /** @brief Remove a single key from a namespace. */
 esp_err_t config_store_erase_key(const char *ns, const char *key);
 
+/** @brief Write a binary blob into an NVS namespace. */
+esp_err_t config_store_set_blob(const char *ns, const char *key, const void *data, size_t len);
+
+/** @brief Read a binary blob. Returns the number of bytes read (0 if missing). */
+size_t config_store_get_blob(const char *ns, const char *key, void *out, size_t out_len);
+
 /** @brief Remove every key in a namespace. */
 esp_err_t config_store_erase_ns(const char *ns);
 

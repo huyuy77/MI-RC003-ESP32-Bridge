@@ -38,6 +38,7 @@ const char *usb_string_descriptors[] = {
     "MIRC003 HID",               // 5: HID interface
     "MIRC003 Microphone",        // 6: UAC microphone
     "MIRC003 WebUSB",            // 7: WebUSB vendor interface
+    "MIRC003 Console",           // 8: CDC debug console
 };
 const int usb_string_descriptor_count =
     (int)(sizeof(usb_string_descriptors) / sizeof(usb_string_descriptors[0]));
@@ -56,13 +57,15 @@ const uint16_t usb_hid_report_descriptor_len = sizeof(usb_hid_report_descriptor)
 //
 //   ITF 0/1 : UAC 1.0 microphone (custom class driver, 108-byte descriptor set)
 //   ITF 2   : HID keyboard + consumer control
-//   ITF 3   : WebUSB vendor-specific bulk interface
+//   ITF 3/4 : CDC debug console
+//   ITF 5   : WebUSB vendor-specific bulk interface
 // ===========================================================================
-#define USB_CONFIG_TOTAL_LEN  (TUD_CONFIG_DESC_LEN + 108 + TUD_HID_DESC_LEN + TUD_VENDOR_DESC_LEN)
+#define USB_CONFIG_TOTAL_LEN  (TUD_CONFIG_DESC_LEN + 108 + TUD_HID_DESC_LEN + \
+                               TUD_CDC_DESC_LEN + TUD_VENDOR_DESC_LEN)
 
 const uint8_t usb_config_descriptor[] = {
     // Configuration number, interface count, string index, total length, attributes, power (mA)
-    TUD_CONFIG_DESCRIPTOR(1, 4, 0, USB_CONFIG_TOTAL_LEN,
+    TUD_CONFIG_DESCRIPTOR(1, 6, 0, USB_CONFIG_TOTAL_LEN,
                           TUSB_DESC_CONFIG_ATT_REMOTE_WAKEUP, 100),
 
     // -------------------- UAC 1.0 microphone (108 bytes) --------------------
@@ -96,6 +99,11 @@ const uint8_t usb_config_descriptor[] = {
     // EP IN address, EP size, polling interval (ms)
     TUD_HID_DESCRIPTOR(USB_ITF_HID, 5, false, sizeof(usb_hid_report_descriptor),
                        USB_EP_HID_IN, 16, 5),
+
+    // -------------------- CDC debug console --------------------
+    // Interface number, string index, notification EP + size, data OUT EP, data IN EP, EP size
+    TUD_CDC_DESCRIPTOR(USB_ITF_CDC, 8, USB_EP_CDC_NOTIF, 8,
+                       USB_EP_CDC_OUT, USB_EP_CDC_IN, 64),
 
     // -------------------- WebUSB vendor interface --------------------
     // Interface number, string index, EP OUT address, EP IN address, EP size

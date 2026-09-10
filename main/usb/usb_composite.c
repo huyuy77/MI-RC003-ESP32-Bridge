@@ -2,6 +2,7 @@
 #include "usb_descriptors.h"
 #include "uac_microphone.h"
 #include "hid_bridge.h"
+#include "usb_serial.h"
 #include "webusb_transport.h"
 #include "app_config.h"
 #include "app_log.h"
@@ -46,6 +47,7 @@ bool usb_composite_init(void)
 {
     hid_bridge_init();
     webusb_transport_init();
+    usb_serial_init();
     uac_microphone_init();
 
     tinyusb_config_t cfg = TINYUSB_DEFAULT_CONFIG(usb_event_cb, NULL);

@@ -112,6 +112,10 @@ void key_engine_feed_key(key_mapper_engine_t *engine, uint8_t raw_key_code, bool
 void key_engine_tick(key_mapper_engine_t *engine, uint32_t now_ms);
 void key_engine_release_all(key_mapper_engine_t *engine, uint32_t now_ms);
 
+/** @brief Take/release the engine's recursive mutex (for bulk layer updates). */
+void key_engine_lock(void);
+void key_engine_unlock(void);
+
 #ifdef __cplusplus
 }
 #endif

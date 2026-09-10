@@ -10,7 +10,7 @@ static const char *TAG = "NVS";
 // Bump this whenever the on-flash layout changes in a way that is not
 // backward compatible (e.g. migrating from the Arduino RemoteMapper firmware,
 // whose NimBLE bond structs have a different size).
-#define NVS_SCHEMA "2"
+#define NVS_SCHEMA "3"
 
 esp_err_t config_store_init(void)
 {
@@ -68,6 +68,30 @@ size_t config_store_get_str(const char *ns, const char *key, char *out, size_t o
     }
     // nvs_get_str writes a NUL terminator; len includes it.
     return (len > 0) ? (len - 1) : 0;
+}
+
+esp_err_t config_store_set_blob(const char *ns, const char *key, const void *data, size_t len)
+{
+    nvs_handle_t h;
+    esp_err_t err = nvs_open(ns, NVS_READWRITE, &h);
+    if (err != ESP_OK) return err;
+    err = nvs_set_blob(h, key, data, len);
+    if (err == ESP_OK) {
+        err = nvs_commit(h);
+    }
+    nvs_close(h);
+    return err;
+}
+
+size_t config_store_get_blob(const char *ns, const char *key, void *out, size_t out_len)
+{
+    if (!out || out_len == 0) return 0;
+    nvs_handle_t h;
+    if (nvs_open(ns, NVS_READONLY, &h) != ESP_OK) return 0;
+    size_t len = out_len;
+    esp_err_t err = nvs_get_blob(h, key, out, &len);
+    nvs_close(h);
+    return (err == ESP_OK) ? len : 0;
 }
 
 esp_err_t config_store_erase_key(const char *ns, const char *key)
