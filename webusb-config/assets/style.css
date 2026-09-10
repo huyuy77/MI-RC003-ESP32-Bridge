@@ -288,6 +288,20 @@ main { max-width: 1000px; margin: 0 auto; padding: 26px 24px 90px; }
   background: #27282a;
   border: 1px solid #343538;
 }
+/* recessed center */
+.dpad::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 52%;
+  height: 52%;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: #1b1c1e;
+  box-shadow: inset 0 2px 7px rgba(0, 0, 0, 0.55);
+}
+/* white ring boundary between band and center */
 .dpad::after {
   content: "";
   position: absolute;
@@ -296,14 +310,14 @@ main { max-width: 1000px; margin: 0 auto; padding: 26px 24px 90px; }
   width: 52%;
   height: 52%;
   transform: translate(-50%, -50%);
-  border: 1.5px solid rgba(255, 255, 255, 0.85);
+  border: 1.5px solid rgba(255, 255, 255, 0.7);
   border-radius: 50%;
   pointer-events: none;
 }
 .dp {
   position: absolute;
-  width: 42px;
-  height: 42px;
+  width: 36px;
+  height: 36px;
   display: grid;
   place-items: center;
   background: transparent;
@@ -314,16 +328,16 @@ main { max-width: 1000px; margin: 0 auto; padding: 26px 24px 90px; }
   transition: background 0.15s ease, color 0.15s ease;
 }
 .dp svg { width: 22px; height: 22px; fill: currentColor; stroke: none; }
-.dp:hover { background: rgba(255, 255, 255, 0.1); color: #fff; }
-.dp.up    { top: 2px; left: 50%; transform: translateX(-50%); }
-.dp.down  { bottom: 2px; left: 50%; transform: translateX(-50%); }
-.dp.left  { left: 2px; top: 50%; transform: translateY(-50%); }
-.dp.right { right: 2px; top: 50%; transform: translateY(-50%); }
+.dp:hover { background: rgba(255, 255, 255, 0.12); color: #fff; }
+.dp.up    { top: 0; left: 50%; transform: translateX(-50%); }
+.dp.down  { bottom: 0; left: 50%; transform: translateX(-50%); }
+.dp.left  { left: 0; top: 50%; transform: translateY(-50%); }
+.dp.right { right: 0; top: 50%; transform: translateY(-50%); }
 .dp.ok {
   top: 50%;
   left: 50%;
-  width: 42%;
-  height: 42%;
+  width: 40%;
+  height: 40%;
   transform: translate(-50%, -50%);
   background: #303134;
   border: 1px solid #48494d;
