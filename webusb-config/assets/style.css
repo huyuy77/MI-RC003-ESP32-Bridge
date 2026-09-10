@@ -281,26 +281,25 @@ main { max-width: 1000px; margin: 0 auto; padding: 26px 24px 90px; }
 
 .dpad {
   position: relative;
-  width: min(138px, 47vw);
+  width: min(150px, 50vw);
   aspect-ratio: 1;
   margin: 0 0 40px;
-  padding: 6px;
   border-radius: 50%;
   background: #27282a;
   border: 1px solid #343538;
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  grid-template-rows: repeat(3, 1fr);
 }
 .dpad::after {
   content: "";
   position: absolute;
-  inset: 24%;
+  inset: 26%;
   border: 1.5px solid rgba(255, 255, 255, 0.85);
   border-radius: 50%;
   pointer-events: none;
 }
 .dp {
+  position: absolute;
+  width: 42px;
+  height: 42px;
   display: grid;
   place-items: center;
   background: transparent;
@@ -312,27 +311,23 @@ main { max-width: 1000px; margin: 0 auto; padding: 26px 24px 90px; }
 }
 .dp svg { width: 22px; height: 22px; fill: currentColor; stroke: none; }
 .dp:hover { background: rgba(255, 255, 255, 0.1); color: #fff; }
-.dp.up    { grid-area: 1 / 2; }
-.dp.down  { grid-area: 3 / 2; }
-.dp.left  { grid-area: 2 / 1; }
-.dp.right { grid-area: 2 / 3; }
+.dp.up    { top: 5px; left: 50%; transform: translateX(-50%); }
+.dp.down  { bottom: 5px; left: 50%; transform: translateX(-50%); }
+.dp.left  { left: 5px; top: 50%; transform: translateY(-50%); }
+.dp.right { right: 5px; top: 50%; transform: translateY(-50%); }
 .dp.ok {
-  position: relative;
-  z-index: 1;
-  grid-area: 2 / 2;
-  place-self: center;
-  width: 64px;
-  height: 64px;
-  border-radius: 50%;
+  top: 50%; left: 50%;
+  width: 60px;
+  height: 60px;
+  transform: translate(-50%, -50%);
   background: #303134;
   border: 1px solid #48494d;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
   color: #c8c9cc;
-  transition: background 0.15s ease, color 0.15s ease, transform 0.12s ease;
 }
 .dp.ok::after { display: none; }
-.dp.ok:hover { background: #3d3e42; color: #fff; }
-.dp.ok:active { transform: scale(0.95); }
+.dp.ok:hover { background: #3d3e42; color: #fff; transform: translate(-50%, -50%) scale(1.05); }
+.dp.ok:active { transform: translate(-50%, -50%) scale(0.95); }
 
 .remote-controls {
   width: 100%;
