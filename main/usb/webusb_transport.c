@@ -26,13 +26,19 @@ static size_t s_rx_len = 0;
 
 static void write_all(const uint8_t *data, size_t len)
 {
+    int retries = 0;
     while (len > 0) {
         uint32_t written = tud_vendor_write(data, len);
         tud_vendor_write_flush();
         if (written == 0) {
+            if (++retries > 500) {
+                app_log("WEBUSB", "TX stalled (%u bytes left)", (unsigned)len);
+                break;
+            }
             vTaskDelay(pdMS_TO_TICKS(1));
             continue;
         }
+        retries = 0;
         data += written;
         len -= written;
     }
@@ -41,6 +47,7 @@ static void write_all(const uint8_t *data, size_t len)
 bool webusb_transport_send(uint8_t cmd, uint8_t status, const uint8_t *payload, size_t len)
 {
     if (!tud_mounted()) {
+        app_log("WEBUSB", "TX cmd=0x%02X dropped (not mounted)", cmd);
         return false;
     }
     if (len > WEBUSB_MAX_PAYLOAD) {
@@ -59,6 +66,7 @@ bool webusb_transport_send(uint8_t cmd, uint8_t status, const uint8_t *payload, 
     if (len > 0 && payload) {
         write_all(payload, len);
     }
+    app_log("WEBUSB", "TX cmd=0x%02X status=%u len=%u", cmd, status, (unsigned)len);
     return true;
 }
 
@@ -130,6 +138,7 @@ static void process_rx_bytes(const uint8_t *data, size_t len)
             if (payload_len) {
                 memcpy(req->payload, p + WEBUSB_FRAME_HEADER_LEN, payload_len);
             }
+            app_log("WEBUSB", "RX cmd=0x%02X len=%u", cmd, (unsigned)payload_len);
             if (xQueueSend(s_req_queue, &req, 0) != pdTRUE) {
                 free(req); // queue full, drop
             }
@@ -172,7 +181,12 @@ void tud_vendor_rx_cb(uint8_t idx, const uint8_t *buffer, uint16_t bufsize)
 
     uint8_t tmp[128];
     uint32_t n;
+    uint32_t total = 0;
     while ((n = tud_vendor_read(tmp, sizeof(tmp))) > 0) {
         process_rx_bytes(tmp, n);
+        total += n;
+    }
+    if (total > 0) {
+        app_log("WEBUSB", "OUT %u bytes", (unsigned)total);
     }
 }
