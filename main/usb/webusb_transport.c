@@ -16,6 +16,7 @@
 static uint8_t *s_rx_acc = NULL;
 static size_t   s_rx_len = 0;
 static uint8_t *s_tx_buf = NULL;
+static uint8_t *s_resp_buf = NULL;
 
 static void write_all(const uint8_t *data, size_t len)
 {
@@ -63,18 +64,16 @@ bool webusb_transport_send(uint8_t cmd, uint8_t status, const uint8_t *payload, 
 
 static void handle_request(uint8_t cmd, const uint8_t *payload, uint16_t payload_len)
 {
-    uint8_t *resp = (uint8_t *)heap_caps_malloc(WEBUSB_MAX_PAYLOAD, MALLOC_CAP_SPIRAM);
-    if (!resp) {
+    if (!s_resp_buf) {
         webusb_transport_send(cmd, 3, NULL, 0);
         return;
     }
 
     uint8_t status = 0;
     size_t resp_len = webusb_protocol_handle(cmd, payload, payload_len,
-                                             resp, WEBUSB_MAX_PAYLOAD, &status);
+                                             s_resp_buf, WEBUSB_MAX_PAYLOAD, &status);
     app_log("WEBUSB", "cmd=0x%02X -> status=%u len=%u", cmd, status, (unsigned)resp_len);
-    webusb_transport_send(cmd, status, resp, resp_len);
-    free(resp);
+    webusb_transport_send(cmd, status, s_resp_buf, resp_len);
 }
 
 static void process_rx_bytes(const uint8_t *data, size_t len)
@@ -128,8 +127,10 @@ void webusb_transport_init(void)
                                            MALLOC_CAP_SPIRAM);
     s_tx_buf = (uint8_t *)heap_caps_malloc(WEBUSB_FRAME_HEADER_LEN + WEBUSB_MAX_PAYLOAD,
                                            MALLOC_CAP_SPIRAM);
-    app_log("WEBUSB", "Transport ready (rx=%s tx=%s)",
-            s_rx_acc ? "PSRAM" : "ERR", s_tx_buf ? "PSRAM" : "ERR");
+    s_resp_buf = (uint8_t *)heap_caps_malloc(WEBUSB_MAX_PAYLOAD, MALLOC_CAP_SPIRAM);
+    app_log("WEBUSB", "Transport ready (rx=%s tx=%s resp=%s)",
+            s_rx_acc ? "PSRAM" : "ERR", s_tx_buf ? "PSRAM" : "ERR",
+            s_resp_buf ? "PSRAM" : "ERR");
 }
 
 // Invoked by TinyUSB whenever data arrives on the vendor OUT endpoint.
@@ -145,7 +146,12 @@ void tud_vendor_rx_cb(uint8_t idx, const uint8_t *buffer, uint16_t bufsize)
 
     uint8_t tmp[128];
     uint32_t n;
+    uint32_t total = 0;
     while ((n = tud_vendor_read(tmp, sizeof(tmp))) > 0) {
         process_rx_bytes(tmp, n);
+        total += n;
+    }
+    if (total > 0) {
+        app_log("WEBUSB", "OUT %u", (unsigned)total);
     }
 }
