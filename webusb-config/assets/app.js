@@ -192,8 +192,18 @@ function command(cmd, payloadObj) {
 async function commandImpl(cmd, payloadObj) {
   if (!device || !outEndpoint) throw new Error("设备未连接");
   const payload = payloadObj ? new TextEncoder().encode(JSON.stringify(payloadObj)) : new Uint8Array(0);
+  const frame = buildFrame(cmd, payload);
   console.log("[WebUSB] send cmd=0x" + cmd.toString(16) + " len=" + payload.length);
-  await device.transferOut(outEndpoint.endpointNumber, buildFrame(cmd, payload));
+  // Send large frames in small chunks so the device's bulk OUT FIFO can drain
+  // between transfers (the save payload is a few KB).
+  const CHUNK = 256;
+  if (frame.length <= CHUNK) {
+    await device.transferOut(outEndpoint.endpointNumber, frame);
+  } else {
+    for (let off = 0; off < frame.length; off += CHUNK) {
+      await device.transferOut(outEndpoint.endpointNumber, frame.subarray(off, off + CHUNK));
+    }
+  }
   const resp = await readFrame();
   console.log("[WebUSB] cmd=0x" + cmd.toString(16) + " status=" + resp.status + " len=" + resp.payload.length);
   if (resp.status !== 0) {
