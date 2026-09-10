@@ -46,6 +46,7 @@ void app_main(void)
 
     app_log("SYSTEM", "==================================================");
     app_log("SYSTEM", " %s v%s (%s)", FIRMWARE_NAME, FIRMWARE_VERSION, HARDWARE_TARGET);
+    app_log("SYSTEM", " Build: %s", FIRMWARE_BUILD);
     app_log("SYSTEM", " Xiaomi Remote 2 Pro (RC003) -> USB bridge + WebUSB");
     app_log("SYSTEM", "==================================================");
 

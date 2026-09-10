@@ -215,6 +215,10 @@ async function refreshStatus() {
     const s = await command(CMD.STATUS);
     $("st-firmware").textContent = s.firmware || "-";
     $("st-version").textContent = s.version || "-";
+    $("st-build").textContent = s.build || "-";
+    if (s.version) {
+      $("hdr-version").textContent = "固件 v" + s.version + (s.build ? " (" + s.build + ")" : "");
+    }
     $("st-uptime").textContent = formatUptime(s.uptime_sec || 0);
     $("st-ble").textContent = ["未连接", "扫描中", "连接中", "已连接", "语音中"][s.ble_state] || s.ble_state;
     $("st-layer").textContent = "层 " + (s.active_layer ?? 0);

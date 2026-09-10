@@ -60,19 +60,19 @@ size_t webusb_protocol_handle(uint8_t cmd, const uint8_t *payload, size_t payloa
     switch (cmd) {
         case CMD_DEVICE_INFO: {
             size_t w = (size_t)snprintf((char *)resp, resp_cap,
-                "{\"name\":\"%s\",\"version\":\"%s\",\"hardware\":\"%s\",\"protocol\":1,"
+                "{\"name\":\"%s\",\"version\":\"%s\",\"build\":\"%s\",\"hardware\":\"%s\",\"protocol\":1,"
                 "\"capabilities\":[\"keymap\",\"layers\",\"ble\",\"webusb\",\"uac\",\"hid\"]}",
-                FIRMWARE_NAME, FIRMWARE_VERSION, HARDWARE_TARGET);
+                FIRMWARE_NAME, FIRMWARE_VERSION, FIRMWARE_BUILD, HARDWARE_TARGET);
             return w;
         }
 
         case CMD_STATUS: {
             size_t w = (size_t)snprintf((char *)resp, resp_cap,
-                "{\"firmware\":\"%s\",\"version\":\"%s\",\"uptime_sec\":%llu,"
+                "{\"firmware\":\"%s\",\"version\":\"%s\",\"build\":\"%s\",\"uptime_sec\":%llu,"
                 "\"ble_state\":%d,\"active_layer\":%u,\"frames_decoded\":%u,"
                 "\"samples_pushed\":%u,\"free_heap\":%u,\"free_psram\":%u,"
                 "\"usb_mounted\":%s}",
-                FIRMWARE_NAME, FIRMWARE_VERSION,
+                FIRMWARE_NAME, FIRMWARE_VERSION, FIRMWARE_BUILD,
                 (unsigned long long)(esp_timer_get_time() / 1000000),
                 (int)ble_remote_get_state(),
                 (unsigned)key_engine_get_active_layer(&g_key_engine),

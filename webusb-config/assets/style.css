@@ -116,6 +116,7 @@ main { max-width: 1080px; margin: 0 auto; padding: 22px 20px 80px; }
 .stat { display: flex; flex-direction: column; gap: 6px; padding: 14px; }
 .stat .label { color: var(--muted); font-size: 12px; }
 .stat .value { font-size: 20px; font-weight: 700; }
+.stat .value.small { font-size: 13px; font-weight: 600; color: #b9c8ff; }
 
 .btn {
   background: var(--card-2);
