@@ -1,0 +1,175 @@
+#include "webusb_transport.h"
+#include "app_config.h"
+#include "app_log.h"
+#include "webusb/webusb_protocol.h"
+
+#include <string.h>
+#include <stdlib.h>
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "freertos/queue.h"
+#include "freertos/semphr.h"
+#include "tusb.h"
+#include "class/vendor/vendor_device.h"
+
+typedef struct {
+    uint8_t cmd;
+    uint16_t len;
+    uint8_t  payload[WEBUSB_MAX_PAYLOAD];
+} webusb_request_t;
+
+static QueueHandle_t s_req_queue = NULL;
+static SemaphoreHandle_t s_rx_mutex = NULL;
+static uint8_t s_rx_acc[WEBUSB_FRAME_HEADER_LEN + WEBUSB_MAX_PAYLOAD];
+static size_t s_rx_len = 0;
+
+static void write_all(const uint8_t *data, size_t len)
+{
+    while (len > 0) {
+        uint32_t written = tud_vendor_write(data, len);
+        tud_vendor_write_flush();
+        if (written == 0) {
+            vTaskDelay(pdMS_TO_TICKS(1));
+            continue;
+        }
+        data += written;
+        len -= written;
+    }
+}
+
+bool webusb_transport_send(uint8_t cmd, uint8_t status, const uint8_t *payload, size_t len)
+{
+    if (!tud_mounted()) {
+        return false;
+    }
+    if (len > WEBUSB_MAX_PAYLOAD) {
+        len = WEBUSB_MAX_PAYLOAD;
+    }
+
+    uint8_t header[WEBUSB_FRAME_HEADER_LEN] = {
+        WEBUSB_FRAME_SOF0,
+        WEBUSB_FRAME_SOF1,
+        cmd,
+        status,
+        (uint8_t)(len & 0xFF),
+        (uint8_t)((len >> 8) & 0xFF),
+    };
+    write_all(header, sizeof(header));
+    if (len > 0 && payload) {
+        write_all(payload, len);
+    }
+    return true;
+}
+
+static void handle_request(webusb_request_t *req)
+{
+    uint8_t *resp = (uint8_t *)malloc(WEBUSB_MAX_PAYLOAD);
+    if (!resp) {
+        webusb_transport_send(req->cmd, 3, NULL, 0);
+        return;
+    }
+
+    uint8_t status = 0;
+    size_t resp_len = webusb_protocol_handle(req->cmd, req->payload, req->len,
+                                             resp, WEBUSB_MAX_PAYLOAD, &status);
+    webusb_transport_send(req->cmd, status, resp, resp_len);
+    free(resp);
+}
+
+static void webusb_task(void *arg)
+{
+    (void)arg;
+    webusb_request_t *req = NULL;
+
+    while (1) {
+        if (xQueueReceive(s_req_queue, &req, portMAX_DELAY) == pdTRUE && req) {
+            handle_request(req);
+            free(req);
+            req = NULL;
+        }
+    }
+}
+
+static void process_rx_bytes(const uint8_t *data, size_t len)
+{
+    if (!s_rx_mutex) {
+        return;
+    }
+    xSemaphoreTake(s_rx_mutex, portMAX_DELAY);
+
+    if (s_rx_len + len > sizeof(s_rx_acc)) {
+        s_rx_len = 0;
+    }
+    memcpy(s_rx_acc + s_rx_len, data, len);
+    s_rx_len += len;
+
+    size_t offset = 0;
+    while (s_rx_len - offset >= WEBUSB_FRAME_HEADER_LEN) {
+        const uint8_t *p = s_rx_acc + offset;
+
+        if (p[0] != WEBUSB_FRAME_SOF0 || p[1] != WEBUSB_FRAME_SOF1) {
+            offset++;
+            continue;
+        }
+
+        uint8_t cmd = p[2];
+        uint16_t payload_len = (uint16_t)(p[4] | (p[5] << 8));
+        if (payload_len > WEBUSB_MAX_PAYLOAD) {
+            offset++;
+            continue;
+        }
+        if (s_rx_len - offset < (size_t)(WEBUSB_FRAME_HEADER_LEN + payload_len)) {
+            break; // wait for more bytes
+        }
+
+        webusb_request_t *req = (webusb_request_t *)malloc(sizeof(webusb_request_t));
+        if (req) {
+            req->cmd = cmd;
+            req->len = payload_len;
+            if (payload_len) {
+                memcpy(req->payload, p + WEBUSB_FRAME_HEADER_LEN, payload_len);
+            }
+            if (xQueueSend(s_req_queue, &req, 0) != pdTRUE) {
+                free(req); // queue full, drop
+            }
+        }
+        offset += WEBUSB_FRAME_HEADER_LEN + payload_len;
+    }
+
+    if (offset > 0) {
+        size_t remaining = s_rx_len - offset;
+        if (remaining > 0) {
+            memmove(s_rx_acc, s_rx_acc + offset, remaining);
+        }
+        s_rx_len = remaining;
+    }
+
+    xSemaphoreGive(s_rx_mutex);
+}
+
+void webusb_transport_init(void)
+{
+    s_rx_len = 0;
+    s_rx_mutex = xSemaphoreCreateMutex();
+    s_req_queue = xQueueCreate(4, sizeof(webusb_request_t *));
+    xTaskCreatePinnedToCore(webusb_task, "webusb", 6144, NULL, 4, NULL, TASK_CORE_USB);
+    app_log("WEBUSB", "Transport ready");
+}
+
+// Invoked by TinyUSB whenever data arrives on the vendor OUT endpoint.
+// In buffered FIFO mode the callback is delivered with a NULL buffer and the
+// bytes must be drained from the vendor FIFO.
+void tud_vendor_rx_cb(uint8_t idx, const uint8_t *buffer, uint16_t bufsize)
+{
+    (void)idx;
+    if (buffer && bufsize > 0) {
+        process_rx_bytes(buffer, bufsize);
+        return;
+    }
+
+    uint8_t tmp[128];
+    uint32_t n;
+    while ((n = tud_vendor_read(tmp, sizeof(tmp))) > 0) {
+        process_rx_bytes(tmp, n);
+    }
+}

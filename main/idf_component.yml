@@ -1,0 +1,10 @@
+## IDF Component Manager Manifest File
+## Managed dependencies for the MIRC003 bridge firmware.
+dependencies:
+  idf: ">=5.1"
+  # TinyUSB device stack with the composite descriptor control helpers.
+  espressif/esp_tinyusb: "^2.0.1~1"
+  # JSON serialization for the WebUSB configuration protocol.
+  bblanchon/arduinojson: "^7.0.4"
+  # WS2812 status LED.
+  espressif/led_strip: "^3.0.0"
