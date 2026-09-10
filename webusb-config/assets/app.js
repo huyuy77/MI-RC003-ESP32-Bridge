@@ -170,6 +170,7 @@ async function readFrame() {
       throw new Error("USB 读取失败: " + result.status);
     }
     const chunk = new Uint8Array(result.data.buffer, result.data.byteOffset, result.data.byteLength);
+    if (chunk.length) console.log("[WebUSB] in " + chunk.length + " bytes");
     const merged = new Uint8Array(rxBuffer.length + chunk.length);
     merged.set(rxBuffer, 0);
     merged.set(chunk, rxBuffer.length);

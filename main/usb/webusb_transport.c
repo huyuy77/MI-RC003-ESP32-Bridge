@@ -196,3 +196,12 @@ void tud_vendor_rx_cb(uint8_t idx, const uint8_t *buffer, uint16_t bufsize)
         app_log("WEBUSB", "OUT %u bytes", (unsigned)total);
     }
 }
+
+// Invoked when a vendor IN transfer completes (i.e. the host read the data).
+void tud_vendor_tx_cb(uint8_t idx, uint32_t sent_bytes)
+{
+    (void)idx;
+    if (sent_bytes > 0) {
+        app_log("WEBUSB", "IN transfer done: %u bytes", (unsigned)sent_bytes);
+    }
+}
