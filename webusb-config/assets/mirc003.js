@@ -159,48 +159,50 @@
     if (!global.navigator || !navigator.usb) {
       return Promise.reject(new Error("当前浏览器不支持 WebUSB"));
     }
+    var out = null, inp = null, vendorItf = -1;
+
     return navigator.usb
       .requestDevice({ filters: [{ vendorId: self.vendorId, productId: self.productId }] })
       .then(function (device) {
         self._device = device;
         return device.open();
       })
-      .then(function (device) {
-        if (device.configuration === null) return device.selectConfiguration(1);
+      .then(function () {
+        if (self._device.configuration === null) return self._device.selectConfiguration(1);
       })
       .then(function () {
-        var out = null, inp = null, claimed = false;
         var itfs = self._device.configuration.interfaces;
         for (var i = 0; i < itfs.length; i++) {
           var alts = itfs[i].alternates;
           for (var j = 0; j < alts.length; j++) {
             if (alts[j].interfaceClass === 0xff) {
-              var itf = itfs[i];
-              var alt = alts[j];
-              return self._device.claimInterface(itf.interfaceNumber).then(function () {
-                out = alt.endpoints.find(function (e) { return e.direction === "out"; });
-                inp = alt.endpoints.find(function (e) { return e.direction === "in"; });
-                if (!out || !inp) throw new Error("未找到 WebUSB 端点");
-                self._out = out;
-                self._in = inp;
-                self._rx = new Uint8Array(0);
-                self._usbDisconnect = function (e) {
-                  if (e.device === self._device) {
-                    self._device = null; self._out = null; self._in = null;
-                    self._emit("disconnect");
-                  }
-                };
-                navigator.usb.addEventListener("disconnect", self._usbDisconnect);
-                self._emit("connect", {
-                  outEndpoint: out.endpointNumber,
-                  inEndpoint: inp.endpointNumber,
-                });
-                return self;
-              });
+              vendorItf = itfs[i].interfaceNumber;
+              out = alts[j].endpoints.find(function (e) { return e.direction === "out"; });
+              inp = alts[j].endpoints.find(function (e) { return e.direction === "in"; });
+              break;
             }
           }
+          if (vendorItf >= 0) break;
         }
-        if (!claimed) throw new Error("未找到 WebUSB 厂商接口");
+        if (vendorItf < 0 || !out || !inp) throw new Error("未找到 WebUSB 厂商接口");
+        return self._device.claimInterface(vendorItf);
+      })
+      .then(function () {
+        self._out = out;
+        self._in = inp;
+        self._rx = new Uint8Array(0);
+        self._usbDisconnect = function (e) {
+          if (e.device === self._device) {
+            self._device = null; self._out = null; self._in = null;
+            self._emit("disconnect");
+          }
+        };
+        navigator.usb.addEventListener("disconnect", self._usbDisconnect);
+        self._emit("connect", {
+          outEndpoint: out.endpointNumber,
+          inEndpoint: inp.endpointNumber,
+        });
+        return self;
       })
       .catch(function (err) {
         if (self._device) { try { self._device.close(); } catch (e) {} }
