@@ -69,6 +69,7 @@ bool webusb_transport_send(uint8_t cmd, uint8_t status, const uint8_t *payload, 
     }
 
     write_all(s_tx_buf, WEBUSB_FRAME_HEADER_LEN + len);
+    app_log("WEBUSB", "TX cmd=0x%02X status=%u len=%u", cmd, status, (unsigned)len);
     return true;
 }
 
@@ -140,6 +141,7 @@ static void process_rx_bytes(const uint8_t *data, size_t len)
             if (payload_len) {
                 memcpy(req->payload, p + WEBUSB_FRAME_HEADER_LEN, payload_len);
             }
+            app_log("WEBUSB", "RX cmd=0x%02X len=%u", cmd, (unsigned)payload_len);
             if (xQueueSend(s_req_queue, &req, 0) != pdTRUE) {
                 free(req); // queue full, drop
             }
@@ -167,9 +169,10 @@ void webusb_transport_init(void)
                                            MALLOC_CAP_SPIRAM);
     s_tx_buf = (uint8_t *)heap_caps_malloc(WEBUSB_FRAME_HEADER_LEN + WEBUSB_MAX_PAYLOAD,
                                            MALLOC_CAP_SPIRAM);
-    xTaskCreatePinnedToCore(webusb_task, "webusb", 12288, NULL, 4, NULL, TASK_CORE_USB);
-    app_log("WEBUSB", "Transport ready (rx=%s tx=%s)",
-            s_rx_acc ? "PSRAM" : "ERR", s_tx_buf ? "PSRAM" : "ERR");
+    BaseType_t ok = xTaskCreatePinnedToCore(webusb_task, "webusb", 12288, NULL, 4, NULL, TASK_CORE_USB);
+    app_log("WEBUSB", "Transport ready (rx=%s tx=%s task=%s)",
+            s_rx_acc ? "PSRAM" : "ERR", s_tx_buf ? "PSRAM" : "ERR",
+            (ok == pdPASS) ? "ok" : "FAILED");
 }
 
 // Invoked by TinyUSB whenever data arrives on the vendor OUT endpoint.

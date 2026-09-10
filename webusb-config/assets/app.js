@@ -194,6 +194,7 @@ async function commandImpl(cmd, payloadObj) {
   const payload = payloadObj ? new TextEncoder().encode(JSON.stringify(payloadObj)) : new Uint8Array(0);
   await device.transferOut(outEndpoint.endpointNumber, buildFrame(cmd, payload));
   const resp = await readFrame();
+  console.log("[WebUSB] cmd=0x" + cmd.toString(16) + " status=" + resp.status + " len=" + resp.payload.length);
   if (resp.status !== 0) {
     throw new Error("设备返回错误 (status=" + resp.status + ")");
   }
