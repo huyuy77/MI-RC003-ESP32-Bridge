@@ -117,23 +117,14 @@ static bool uac_driver_control_xfer_cb(uint8_t rhport, uint8_t stage,
             s_uac_alt = alt;
             s_uac_streaming = (alt == 1);
 
-            usbd_edpt_close(rhport, (uint8_t)(s_uac_ep_in | 0x80));
-
+            // The isochronous IN endpoint is opened once in uac_driver_open().
+            // Do NOT close/reopen it here: the ESP32-S3 DWC2 port does not
+            // decrement its IN-endpoint allocation counter on close, so a
+            // reopen would exhaust the hardware's 5 IN endpoints.
             if (alt == 1) {
-                tusb_desc_endpoint_t ep;
-                ep.bLength = sizeof(tusb_desc_endpoint_t);
-                ep.bDescriptorType = TUSB_DESC_ENDPOINT;
-                ep.bEndpointAddress = (uint8_t)(s_uac_ep_in | 0x80);
-                ep.bmAttributes.xfer = TUSB_XFER_ISOCHRONOUS;
-                ep.bmAttributes.sync = 1;
-                ep.wMaxPacketSize = 64;
-                ep.bInterval = 2;
-                usbd_edpt_open(rhport, &ep);
-
                 memset(s_tx_buf, 0, sizeof(s_tx_buf));
-                usbd_edpt_xfer(rhport, ep.bEndpointAddress, (uint8_t *)s_tx_buf, sizeof(s_tx_buf));
-            } else {
-                usbd_edpt_close(rhport, (uint8_t)(s_uac_ep_in | 0x80));
+                usbd_edpt_xfer(rhport, (uint8_t)(s_uac_ep_in | 0x80),
+                               (uint8_t *)s_tx_buf, sizeof(s_tx_buf));
             }
             return tud_control_status(rhport, req);
         } else if (req->bRequest == TUSB_REQ_GET_INTERFACE) {

@@ -37,8 +37,7 @@ const char *usb_string_descriptors[] = {
     WEBUSB_LANDING_URL,          // 4: WebUSB landing page
     "MIRC003 HID",               // 5: HID interface
     "MIRC003 Microphone",        // 6: UAC microphone
-    "MIRC003 WebUSB",            // 7: WebUSB vendor interface
-    "MIRC003 Console",           // 8: CDC debug console
+    "MIRC003 Interface",         // 7: WebUSB vendor + CDC console (esp_tinyusb allows max 8)
 };
 const int usb_string_descriptor_count =
     (int)(sizeof(usb_string_descriptors) / sizeof(usb_string_descriptors[0]));
@@ -102,7 +101,7 @@ const uint8_t usb_config_descriptor[] = {
 
     // -------------------- CDC debug console --------------------
     // Interface number, string index, notification EP + size, data OUT EP, data IN EP, EP size
-    TUD_CDC_DESCRIPTOR(USB_ITF_CDC, 8, USB_EP_CDC_NOTIF, 8,
+    TUD_CDC_DESCRIPTOR(USB_ITF_CDC, 7, USB_EP_CDC_NOTIF, 8,
                        USB_EP_CDC_OUT, USB_EP_CDC_IN, 64),
 
     // -------------------- WebUSB vendor interface --------------------
