@@ -122,6 +122,11 @@ monitor.bat COM5 :: 串口监视
 
 配置页面位于 [`webusb-config/`](./webusb-config)，是一个**纯静态站点**，不依赖任何后端。
 
+> **二次开发**：设备通信已封装为无依赖的浏览器库
+> [`webusb-config/assets/mirc003.js`](./webusb-config/assets/mirc003.js)，
+> 第三方可以只写自己的 HTML/JS 调用该 API，完全替换默认 UI。
+> 完整 API 参考见 [`webusb-config/doc.md`](./webusb-config/doc.md)。
+
 ### 5.1 本地运行（推荐）
 
 WebUSB 要求安全上下文，`http://localhost` 被视为安全来源：

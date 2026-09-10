@@ -72,7 +72,6 @@ static void handle_request(uint8_t cmd, const uint8_t *payload, uint16_t payload
     uint8_t status = 0;
     size_t resp_len = webusb_protocol_handle(cmd, payload, payload_len,
                                              s_resp_buf, WEBUSB_MAX_PAYLOAD, &status);
-    app_log("WEBUSB", "cmd=0x%02X -> status=%u len=%u", cmd, status, (unsigned)resp_len);
     webusb_transport_send(cmd, status, s_resp_buf, resp_len);
 }
 
