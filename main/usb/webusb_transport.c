@@ -69,7 +69,6 @@ bool webusb_transport_send(uint8_t cmd, uint8_t status, const uint8_t *payload, 
     }
 
     write_all(s_tx_buf, WEBUSB_FRAME_HEADER_LEN + len);
-    app_log("WEBUSB", "TX cmd=0x%02X status=%u len=%u", cmd, status, (unsigned)len);
     return true;
 }
 
@@ -141,7 +140,6 @@ static void process_rx_bytes(const uint8_t *data, size_t len)
             if (payload_len) {
                 memcpy(req->payload, p + WEBUSB_FRAME_HEADER_LEN, payload_len);
             }
-            app_log("WEBUSB", "RX cmd=0x%02X len=%u", cmd, (unsigned)payload_len);
             if (xQueueSend(s_req_queue, &req, 0) != pdTRUE) {
                 free(req); // queue full, drop
             }
@@ -187,21 +185,7 @@ void tud_vendor_rx_cb(uint8_t idx, const uint8_t *buffer, uint16_t bufsize)
 
     uint8_t tmp[128];
     uint32_t n;
-    uint32_t total = 0;
     while ((n = tud_vendor_read(tmp, sizeof(tmp))) > 0) {
         process_rx_bytes(tmp, n);
-        total += n;
-    }
-    if (total > 0) {
-        app_log("WEBUSB", "OUT %u bytes", (unsigned)total);
-    }
-}
-
-// Invoked when a vendor IN transfer completes (i.e. the host read the data).
-void tud_vendor_tx_cb(uint8_t idx, uint32_t sent_bytes)
-{
-    (void)idx;
-    if (sent_bytes > 0) {
-        app_log("WEBUSB", "IN transfer done: %u bytes", (unsigned)sent_bytes);
     }
 }
