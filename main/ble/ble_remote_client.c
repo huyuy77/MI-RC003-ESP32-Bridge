@@ -234,19 +234,42 @@ static void run_next_op(void)
     }
 }
 
-// CCCD handle table discovered from the peer's attribute database.
-#define MAX_CCCDS 8
-static struct { uint16_t chr; uint16_t cccd; } s_cccds[MAX_CCCDS];
+// Attribute handles discovered from the peer's database.
+#define MAX_CCCDS      32
+#define MAX_ALL_CHRS   64
+static uint16_t s_cccd_handles[MAX_CCCDS];
 static int s_cccd_count = 0;
+static uint16_t s_all_chrs[MAX_ALL_CHRS];
+static int s_all_chr_count = 0;
 
-static uint16_t cccd_lookup(uint16_t chr_val_handle)
+static uint16_t next_chr_handle(uint16_t chr)
 {
-    for (int i = 0; i < s_cccd_count; i++) {
-        if (s_cccds[i].chr == chr_val_handle) {
-            return s_cccds[i].cccd;
+    uint16_t best = 0;
+    for (int i = 0; i < s_all_chr_count; i++) {
+        uint16_t h = s_all_chrs[i];
+        if (h > chr && (best == 0 || h < best)) {
+            best = h;
         }
     }
-    return 0;
+    return best ? best : 0xFFFF;
+}
+
+// The CCCD of a characteristic is the first 0x2902 descriptor after its value
+// handle and before the next characteristic. NimBLE reports chr_val_handle=0
+// for a whole-range descriptor scan, so we cannot key the table by it; instead
+// match by handle order. This handles characteristics (e.g. HOGP reports) that
+// have a Report Reference descriptor before the CCCD.
+static uint16_t cccd_lookup(uint16_t chr)
+{
+    uint16_t limit = next_chr_handle(chr);
+    uint16_t best = 0;
+    for (int i = 0; i < s_cccd_count; i++) {
+        uint16_t h = s_cccd_handles[i];
+        if (h > chr && h < limit && (best == 0 || h < best)) {
+            best = h;
+        }
+    }
+    return best;
 }
 
 // Start the post-discovery init sequence: HID Control Point / Protocol Mode
@@ -280,17 +303,16 @@ static void begin_init_sequence(void)
 static int dsc_all_cb(uint16_t conn_handle, const struct ble_gatt_error *error,
                       uint16_t chr_val_handle, const struct ble_gatt_dsc *dsc, void *arg)
 {
-    (void)conn_handle; (void)arg;
+    (void)conn_handle; (void)chr_val_handle; (void)arg;
     if (error->status == 0 && dsc) {
         if (dsc->uuid.u.type == BLE_UUID_TYPE_16 && dsc->uuid.u16.value == 0x2902) {
             if (s_cccd_count < MAX_CCCDS) {
-                s_cccds[s_cccd_count].chr = chr_val_handle;
-                s_cccds[s_cccd_count].cccd = dsc->handle;
-                s_cccd_count++;
+                s_cccd_handles[s_cccd_count++] = dsc->handle;
             }
-            app_log("BLE", "CCCD for chr 0x%04X at 0x%04X", chr_val_handle, dsc->handle);
+            app_log("BLE", "CCCD at 0x%04X", dsc->handle);
         }
     } else if (error->status == BLE_HS_EDONE) {
+        app_log("BLE", "Discovered %d CCCD(s)", s_cccd_count);
         begin_init_sequence();
     }
     return 0;
@@ -304,6 +326,9 @@ static int chr_disc_cb(uint16_t conn_handle, const struct ble_gatt_error *error,
 {
     (void)arg;
     if (error->status == 0 && chr) {
+        if (s_all_chr_count < MAX_ALL_CHRS) {
+            s_all_chrs[s_all_chr_count++] = chr->val_handle;
+        }
         const ble_uuid_t *u = &chr->uuid.u;
         if (u->type == BLE_UUID_TYPE_128) {
             if (ble_uuid_cmp(u, &s_uuid_atvv_cmd.u) == 0) s_atvv_cmd_chr = chr->val_handle;
@@ -311,7 +336,8 @@ static int chr_disc_cb(uint16_t conn_handle, const struct ble_gatt_error *error,
             else if (ble_uuid_cmp(u, &s_uuid_atvv_ctl.u) == 0) s_atvv_ctl_chr = chr->val_handle;
         } else if (u->type == BLE_UUID_TYPE_16) {
             if (ble_uuid_cmp(u, &s_uuid_hid_report.u) == 0) {
-                if (s_hid_report_count < MAX_REPORTS) {
+                // Only input reports notify; output reports have no CCCD.
+                if ((chr->properties & 0x30) && s_hid_report_count < MAX_REPORTS) {
                     s_hid_report_chrs[s_hid_report_count++] = chr->val_handle;
                 }
             } else if (ble_uuid_cmp(u, &s_uuid_hid_proto_mode.u) == 0) {
@@ -367,6 +393,7 @@ static void start_discovery(void)
     s_hid_report_count = 0;
     s_atvv_start = s_atvv_end = s_hid_start = s_hid_end = 0;
     s_cccd_count = 0;
+    s_all_chr_count = 0;
     app_log("BLE", "Discovering GATT services...");
     ble_gattc_disc_all_svcs(s_conn_handle, svc_disc_cb, NULL);
 }
