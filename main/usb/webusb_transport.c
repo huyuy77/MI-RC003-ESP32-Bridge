@@ -5,38 +5,31 @@
 
 #include <string.h>
 #include <stdlib.h>
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
-#include "freertos/queue.h"
-#include "freertos/semphr.h"
 #include "esp_heap_caps.h"
 #include "tusb.h"
 #include "class/vendor/vendor_device.h"
 
-typedef struct {
-    uint8_t cmd;
-    uint16_t len;
-    uint8_t  payload[];   // sized to the actual frame
-} webusb_request_t;
-
-static QueueHandle_t s_req_queue = NULL;
-static SemaphoreHandle_t s_rx_mutex = NULL;
+// The WebUSB vendor endpoint is driven entirely from the TinyUSB task context
+// (tud_vendor_rx_cb). Requests are parsed and answered synchronously so that
+// tud_vendor_write()/flush() are never called from another task, which could
+// otherwise race with the stack and eventually stall the endpoint.
 static uint8_t *s_rx_acc = NULL;
-static size_t s_rx_len = 0;
-static uint8_t *s_tx_buf = NULL;   // header + payload sent as one transfer
+static size_t   s_rx_len = 0;
+static uint8_t *s_tx_buf = NULL;
 
 static void write_all(const uint8_t *data, size_t len)
 {
+    // Responses are smaller than the vendor TX FIFO, so this normally completes
+    // in one call without yielding (yielding here would stall tud_task).
     int retries = 0;
     while (len > 0) {
         uint32_t written = tud_vendor_write(data, len);
         tud_vendor_write_flush();
         if (written == 0) {
-            if (++retries > 500) {
+            if (++retries > 50) {
                 app_log("WEBUSB", "TX stalled (%u bytes left)", (unsigned)len);
                 break;
             }
-            vTaskDelay(pdMS_TO_TICKS(1));
             continue;
         }
         retries = 0;
@@ -48,16 +41,12 @@ static void write_all(const uint8_t *data, size_t len)
 bool webusb_transport_send(uint8_t cmd, uint8_t status, const uint8_t *payload, size_t len)
 {
     if (!tud_mounted() || !s_tx_buf) {
-        app_log("WEBUSB", "TX cmd=0x%02X dropped (not mounted)", cmd);
         return false;
     }
     if (len > WEBUSB_MAX_PAYLOAD) {
         len = WEBUSB_MAX_PAYLOAD;
     }
 
-    // Build the whole frame in one buffer so it is emitted as a single USB
-    // transfer (avoids a separate short header packet / ZLP that can confuse
-    // the browser's frame reader).
     s_tx_buf[0] = WEBUSB_FRAME_SOF0;
     s_tx_buf[1] = WEBUSB_FRAME_SOF1;
     s_tx_buf[2] = cmd;
@@ -69,45 +58,29 @@ bool webusb_transport_send(uint8_t cmd, uint8_t status, const uint8_t *payload, 
     }
 
     write_all(s_tx_buf, WEBUSB_FRAME_HEADER_LEN + len);
-    app_log("WEBUSB", "TX cmd=0x%02X status=%u len=%u", cmd, status, (unsigned)len);
     return true;
 }
 
-static void handle_request(webusb_request_t *req)
+static void handle_request(uint8_t cmd, const uint8_t *payload, uint16_t payload_len)
 {
     uint8_t *resp = (uint8_t *)heap_caps_malloc(WEBUSB_MAX_PAYLOAD, MALLOC_CAP_SPIRAM);
     if (!resp) {
-        webusb_transport_send(req->cmd, 3, NULL, 0);
+        webusb_transport_send(cmd, 3, NULL, 0);
         return;
     }
 
     uint8_t status = 0;
-    size_t resp_len = webusb_protocol_handle(req->cmd, req->payload, req->len,
+    size_t resp_len = webusb_protocol_handle(cmd, payload, payload_len,
                                              resp, WEBUSB_MAX_PAYLOAD, &status);
-    webusb_transport_send(req->cmd, status, resp, resp_len);
+    webusb_transport_send(cmd, status, resp, resp_len);
     free(resp);
-}
-
-static void webusb_task(void *arg)
-{
-    (void)arg;
-    webusb_request_t *req = NULL;
-
-    while (1) {
-        if (xQueueReceive(s_req_queue, &req, portMAX_DELAY) == pdTRUE && req) {
-            handle_request(req);
-            free(req);
-            req = NULL;
-        }
-    }
 }
 
 static void process_rx_bytes(const uint8_t *data, size_t len)
 {
-    if (!s_rx_mutex || !s_rx_acc) {
+    if (!s_rx_acc) {
         return;
     }
-    xSemaphoreTake(s_rx_mutex, portMAX_DELAY);
 
     if (s_rx_len + len > (WEBUSB_FRAME_HEADER_LEN + WEBUSB_MAX_PAYLOAD)) {
         s_rx_len = 0;
@@ -134,21 +107,7 @@ static void process_rx_bytes(const uint8_t *data, size_t len)
             break; // wait for more bytes
         }
 
-        webusb_request_t *req = (webusb_request_t *)heap_caps_malloc(
-            sizeof(webusb_request_t) + payload_len, MALLOC_CAP_SPIRAM);
-        if (req) {
-            req->cmd = cmd;
-            req->len = payload_len;
-            if (payload_len) {
-                memcpy(req->payload, p + WEBUSB_FRAME_HEADER_LEN, payload_len);
-            }
-            app_log("WEBUSB", "RX cmd=0x%02X len=%u", cmd, (unsigned)payload_len);
-            if (xQueueSend(s_req_queue, &req, 0) != pdTRUE) {
-                free(req); // queue full, drop
-            }
-        } else {
-            app_log("WEBUSB", "RX drop cmd=0x%02X: no mem (%u bytes)", cmd, (unsigned)payload_len);
-        }
+        handle_request(cmd, p + WEBUSB_FRAME_HEADER_LEN, payload_len);
         offset += WEBUSB_FRAME_HEADER_LEN + payload_len;
     }
 
@@ -159,23 +118,17 @@ static void process_rx_bytes(const uint8_t *data, size_t len)
         }
         s_rx_len = remaining;
     }
-
-    xSemaphoreGive(s_rx_mutex);
 }
 
 void webusb_transport_init(void)
 {
     s_rx_len = 0;
-    s_rx_mutex = xSemaphoreCreateMutex();
-    s_req_queue = xQueueCreate(4, sizeof(webusb_request_t *));
     s_rx_acc = (uint8_t *)heap_caps_malloc(WEBUSB_FRAME_HEADER_LEN + WEBUSB_MAX_PAYLOAD,
                                            MALLOC_CAP_SPIRAM);
     s_tx_buf = (uint8_t *)heap_caps_malloc(WEBUSB_FRAME_HEADER_LEN + WEBUSB_MAX_PAYLOAD,
                                            MALLOC_CAP_SPIRAM);
-    BaseType_t ok = xTaskCreatePinnedToCore(webusb_task, "webusb", 12288, NULL, 4, NULL, TASK_CORE_USB);
-    app_log("WEBUSB", "Transport ready (rx=%s tx=%s task=%s)",
-            s_rx_acc ? "PSRAM" : "ERR", s_tx_buf ? "PSRAM" : "ERR",
-            (ok == pdPASS) ? "ok" : "FAILED");
+    app_log("WEBUSB", "Transport ready (rx=%s tx=%s)",
+            s_rx_acc ? "PSRAM" : "ERR", s_tx_buf ? "PSRAM" : "ERR");
 }
 
 // Invoked by TinyUSB whenever data arrives on the vendor OUT endpoint.
@@ -191,12 +144,7 @@ void tud_vendor_rx_cb(uint8_t idx, const uint8_t *buffer, uint16_t bufsize)
 
     uint8_t tmp[128];
     uint32_t n;
-    uint32_t total = 0;
     while ((n = tud_vendor_read(tmp, sizeof(tmp))) > 0) {
         process_rx_bytes(tmp, n);
-        total += n;
-    }
-    if (total > 200) {
-        app_log("WEBUSB", "OUT %u bytes", (unsigned)total);
     }
 }
