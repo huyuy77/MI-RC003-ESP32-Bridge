@@ -23,6 +23,12 @@
     home: '<svg viewBox="0 0 24 24"><path d="M4 11.2 12 4l8 7.2V20H4z"/></svg>',
     menu: '<svg viewBox="0 0 24 24"><path d="M5 7h14M5 12h14M5 17h14"/></svg>',
   };
+  const DPAD_ICON = {
+    up: '<svg viewBox="0 0 24 24"><path d="M6 15l6-6 6 6"/></svg>',
+    down: '<svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>',
+    left: '<svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg>',
+    right: '<svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>',
+  };
 
   let keymap = null;
   let activeLayer = 0;
@@ -285,8 +291,20 @@
   }
   function bindBtn(btn, layer, vk) {
     const pk = pkOf(vk);
+    const show = () => {
+      const el = $("remote-info");
+      if (el) el.innerHTML = `<b>${pk.name}</b> · ${keyAction(layer, vk)}`;
+    };
+    const reset = () => {
+      const el = $("remote-info");
+      if (el) el.textContent = "将鼠标移到按键上查看映射";
+    };
     btn.title = `${pk.name}：${keyAction(layer, vk)}`;
     btn.onclick = () => openEditor(pk);
+    btn.addEventListener("mouseenter", show);
+    btn.addEventListener("focus", show);
+    btn.addEventListener("mouseleave", reset);
+    btn.addEventListener("blur", reset);
     return btn;
   }
 
@@ -300,10 +318,7 @@
     // Top: power (left) / voice (right)
     const top = document.createElement("div");
     top.className = "remote-top";
-    [
-      [0x66, ICON.power],
-      [0x04, ICON.voice],
-    ].forEach(([vk, icon]) => {
+    [[0x66, ICON.power], [0x04, ICON.voice]].forEach(([vk, icon]) => {
       const btn = document.createElement("button");
       btn.type = "button";
       btn.className = "utility";
@@ -312,61 +327,48 @@
     });
     host.appendChild(top);
 
-    // D-pad: arrows + center OK
+    // D-pad: arrows + center OK ring
     const dpad = document.createElement("div");
     dpad.className = "dpad";
     [
-      ["up", 0x52, "⌃"],
-      ["down", 0x51, "⌄"],
-      ["left", 0x50, "‹"],
-      ["right", 0x4f, "›"],
+      ["up", 0x52, DPAD_ICON.up],
+      ["down", 0x51, DPAD_ICON.down],
+      ["left", 0x50, DPAD_ICON.left],
+      ["right", 0x4f, DPAD_ICON.right],
       ["ok", 0x28, ""],
-    ].forEach(([cls, vk, glyph]) => {
+    ].forEach(([cls, vk, inner]) => {
       const btn = document.createElement("button");
       btn.type = "button";
       btn.className = "dp " + cls;
-      btn.innerHTML = glyph;
+      btn.innerHTML = inner;
       dpad.appendChild(bindBtn(btn, layer, vk));
     });
     host.appendChild(dpad);
 
-    // Controls: back | volume / home / menu | TV
+    // Controls: back | volume (2 rows) / home / menu | TV
     const controls = document.createElement("div");
     controls.className = "remote-controls";
-
-    const cell = (vk, cls, inner) => {
-      const wrap = document.createElement("div");
-      wrap.className = "cell";
+    const round = (vk, cls, inner) => {
       const btn = document.createElement("button");
       btn.type = "button";
       btn.className = cls;
       btn.innerHTML = inner;
-      bindBtn(btn, layer, vk);
-      const cap = document.createElement("span");
-      cap.className = "cap";
-      cap.textContent = keyAction(layer, vk);
-      wrap.append(btn, cap);
-      return wrap;
+      return bindBtn(btn, layer, vk);
     };
-
     const volume = document.createElement("div");
     volume.className = "volume";
-    [
-      ["＋", 0x80],
-      ["−", 0x81],
-    ].forEach(([glyph, vk]) => {
+    [["＋", 0x80], ["−", 0x81]].forEach(([glyph, vk]) => {
       const btn = document.createElement("button");
       btn.type = "button";
       btn.innerHTML = glyph;
       volume.appendChild(bindBtn(btn, layer, vk));
     });
-
     controls.append(
-      cell(0xf1, "round back", ICON.back),
+      round(0xf1, "round back", ICON.back),
       volume,
-      cell(0x24, "round home", ICON.home),
-      cell(0x5d, "round menu", ICON.menu),
-      cell(0xc0, "round tv", "<span>TV</span>")
+      round(0x24, "round home", ICON.home),
+      round(0x5d, "round menu", ICON.menu),
+      round(0xc0, "round tv", "<span>TV</span>")
     );
     host.appendChild(controls);
   }
