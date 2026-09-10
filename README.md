@@ -229,13 +229,45 @@ MIRC003-bridge-esp32/
 
 ---
 
-## 9. 致谢
+## 9. 常见问题
+
+### Windows 设备管理器提示「代码 28 / 该设备的驱动程序未被安装」
+
+本固件在 BOS 描述符中同时提供了 **WebUSB** 与 **Microsoft OS 2.0（WINUSB 兼容 ID）**
+描述符，Windows 10/11 应自动为该厂商接口加载 `winusb.sys`。若仍出现代码 28：
+
+1. 确认烧录的是最新固件（PID 已从 `0x8301` 改为 `0x8302`，以强制 Windows 重新识别）。
+2. 打开「设备管理器」，卸载残留的旧设备（`VID_303A&PID_8301`）后「扫描检测硬件改动」。
+3. 设备应出现在「通用串行总线设备 / WinUsb Device」下，而不是「其他设备」。
+4. 无需 Zadig；Chrome / Edge 桌面版即可通过 WebUSB 访问。
+
+### 串口日志出现 `NIMBLE_NVS: NVS data size mismatch`
+
+这是因为之前烧录过 Arduino 版 RemoteMapper，其 NimBLE 绑定数据结构与本固件不同。
+固件已内置一次性 NVS 迁移：首次启动会检测 schema 并自动清空旧 NVS。
+若仍有问题，可手动执行 `idf.py erase-flash` 后再烧录。
+
+### 浏览器找不到设备
+
+* 必须使用桌面版 Chrome / Edge；移动端浏览器不支持 WebUSB。
+* 页面必须运行在 `https://` 或 `http://localhost`（安全上下文）。
+* 关闭可能占用该设备的其他程序（如串口助手、Zadig）。
+* 首次使用需在弹窗中选择 `MIRC003 Remote Bridge`。
+
+### 语音键没有声音 / 输入法无法采集
+
+在 Windows 声音设置中，把输入设备切换为 `MIRC003 Microphone`（UAC 1.0 麦克风），
+并确认输入法的语音热键与遥控器语音键配置一致（默认 `右Alt + ,`）。
+
+---
+
+## 10. 致谢
 
 * [cuicui-V5/RemoteMapper-ESP32](https://github.com/cuicui-V5/RemoteMapper-ESP32)：硬件桥接架构、按键引擎与音频处理。
 * [HD838A/remote-mic-app](https://github.com/HD838A/remote-mic-app)：RC003 的 HOGP/ATVV 协议细节与 UI 参考。
 * [QL-4/RemoteMapper](https://github.com/QL-4/RemoteMapper)、[godarrenw/mi_remote_control](https://github.com/godarrenw/mi_remote_control)：协议逆向参考。
 * [TinyUSB](https://github.com/hathach/tinyusb) 与 [esp_tinyusb](https://github.com/espressif/esp-usb)。
 
-## 10. 开源协议
+## 11. 开源协议
 
 [MIT License](./LICENSE)

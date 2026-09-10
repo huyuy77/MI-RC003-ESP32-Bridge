@@ -7,6 +7,11 @@
 
 static const char *TAG = "NVS";
 
+// Bump this whenever the on-flash layout changes in a way that is not
+// backward compatible (e.g. migrating from the Arduino RemoteMapper firmware,
+// whose NimBLE bond structs have a different size).
+#define NVS_SCHEMA "2"
+
 esp_err_t config_store_init(void)
 {
     esp_err_t err = nvs_flash_init();
@@ -15,7 +20,20 @@ esp_err_t config_store_init(void)
         ESP_ERROR_CHECK(nvs_flash_erase());
         err = nvs_flash_init();
     }
-    return err;
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    // One-time migration: wipe NVS if it was written by an incompatible layout.
+    char schema[8] = {0};
+    config_store_get_str("sys_conf", "schema", schema, sizeof(schema));
+    if (strcmp(schema, NVS_SCHEMA) != 0) {
+        ESP_LOGW(TAG, "NVS schema mismatch ('%s' != '%s'), erasing NVS", schema, NVS_SCHEMA);
+        ESP_ERROR_CHECK(nvs_flash_erase());
+        ESP_ERROR_CHECK(nvs_flash_init());
+        config_store_set_str("sys_conf", "schema", NVS_SCHEMA);
+    }
+    return ESP_OK;
 }
 
 esp_err_t config_store_set_str(const char *ns, const char *key, const char *value)

@@ -1,7 +1,7 @@
 /* MIRC003 Bridge - WebUSB configuration client */
 
 const VID = 0x303a;
-const PID = 0x8301;
+const PID = 0x8302;
 
 const CMD = {
   DEVICE_INFO: 0x50,
