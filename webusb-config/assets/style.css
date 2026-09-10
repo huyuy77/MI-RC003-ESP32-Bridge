@@ -285,30 +285,30 @@ main { max-width: 1000px; margin: 0 auto; padding: 26px 24px 90px; }
   aspect-ratio: 1;
   margin: 0 0 40px;
 }
-/* four quarter-ring direction keys */
+/* four quarter-ring direction keys (clipped to their quadrant so hovers don't overlap) */
 .arc {
   position: absolute;
   inset: 0;
   border-radius: 50%;
-  border: 22px solid transparent;
+  border: 30px solid transparent;
   background: transparent;
   cursor: pointer;
   color: #3a3b3e;
   transition: color 0.15s ease;
 }
-.arc.up    { border-top-color: currentColor; }
-.arc.right { border-right-color: currentColor; }
-.arc.down  { border-bottom-color: currentColor; }
-.arc.left  { border-left-color: currentColor; }
+.arc.up    { border-top-color: currentColor; clip-path: polygon(0 0, 100% 0, 50% 50%); }
+.arc.right { border-right-color: currentColor; clip-path: polygon(100% 0, 100% 100%, 50% 50%); }
+.arc.down  { border-bottom-color: currentColor; clip-path: polygon(0 100%, 100% 100%, 50% 50%); }
+.arc.left  { border-left-color: currentColor; clip-path: polygon(0 0, 0 100%, 50% 50%); }
 .arc:hover { color: #56585d; }
 .arc:active { color: #6b6d73; }
-/* OK key fills the whole area inside the white ring */
+/* OK key fills the area inside the white ring */
 .dp.ok {
   position: absolute;
   top: 50%;
   left: 50%;
-  width: 60%;
-  height: 60%;
+  width: 56%;
+  height: 56%;
   transform: translate(-50%, -50%);
   background: linear-gradient(180deg, #34353a, #2a2b2e);
   border: 1.5px solid rgba(255, 255, 255, 0.8);
