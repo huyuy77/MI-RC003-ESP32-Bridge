@@ -22,6 +22,10 @@
 
 extern key_mapper_engine_t g_key_engine;
 
+// Streaming keymap upload buffer (chunked save avoids large bulk OUT transfers).
+static uint8_t *s_save_buf = NULL;
+static size_t   s_save_len = 0;
+
 static size_t copy_str(uint8_t *resp, size_t resp_cap, const char *src)
 {
     if (!src) {
@@ -93,6 +97,51 @@ size_t webusb_protocol_handle(uint8_t cmd, const uint8_t *payload, size_t payloa
 
         case CMD_KEYMAP_GET:
             return key_config_to_json(&g_key_engine, (char *)resp, resp_cap);
+
+        case CMD_KEYMAP_BEGIN: {
+            if (!s_save_buf) {
+                s_save_buf = (uint8_t *)heap_caps_malloc(WEBUSB_MAX_PAYLOAD + 1, MALLOC_CAP_SPIRAM);
+            }
+            if (!s_save_buf) {
+                *status = WEBUSB_ERR_INTERNAL;
+                return ok(resp, resp_cap, "{\"error\":\"no_mem\"}");
+            }
+            s_save_len = 0;
+            return ok(resp, resp_cap, "{\"status\":\"begin\"}");
+        }
+
+        case CMD_KEYMAP_DATA: {
+            if (!s_save_buf) {
+                *status = WEBUSB_ERR_INTERNAL;
+                return ok(resp, resp_cap, "{\"error\":\"no_begin\"}");
+            }
+            if (s_save_len + payload_len > WEBUSB_MAX_PAYLOAD) {
+                *status = WEBUSB_ERR_ARG;
+                return ok(resp, resp_cap, "{\"error\":\"too_long\"}");
+            }
+            if (payload_len) {
+                memcpy(s_save_buf + s_save_len, payload, payload_len);
+                s_save_len += payload_len;
+            }
+            return ok(resp, resp_cap, "{\"status\":\"ok\"}");
+        }
+
+        case CMD_KEYMAP_COMMIT: {
+            if (!s_save_buf || s_save_len == 0) {
+                *status = WEBUSB_ERR_ARG;
+                return ok(resp, resp_cap, "{\"error\":\"empty\"}");
+            }
+            s_save_buf[s_save_len] = '\0';
+            app_log("KEYMAP", "Saving keymap (%u bytes)", (unsigned)s_save_len);
+            bool parsed = key_config_from_json(&g_key_engine, (char *)s_save_buf);
+            s_save_len = 0;
+            if (!parsed) {
+                *status = WEBUSB_ERR_ARG;
+                return ok(resp, resp_cap, "{\"error\":\"invalid_keymap_format\"}");
+            }
+            key_config_storage_request_save();
+            return ok(resp, resp_cap, "{\"status\":\"saved\"}");
+        }
 
         case CMD_KEYMAP_SAVE: {
             if (!payload || payload_len == 0) {

@@ -12,6 +12,9 @@ const CMD = {
   KEYMAP_SAVE: 0x11,
   KEYMAP_RESET: 0x12,
   KEYMAP_TELEMETRY: 0x13,
+  KEYMAP_BEGIN: 0x15,
+  KEYMAP_DATA: 0x16,
+  KEYMAP_COMMIT: 0x17,
   BLE_SCAN: 0x20,
   BLE_CONNECT: 0x21,
   BLE_UNPAIR: 0x22,
@@ -192,31 +195,28 @@ async function readFrame() {
 // corrupt each other's framing.
 let cmdChain = Promise.resolve();
 
-function command(cmd, payloadObj) {
-  const run = () => commandImpl(cmd, payloadObj);
+function command(cmd, payloadObj, rawBytes) {
+  const run = () => commandImpl(cmd, payloadObj, rawBytes);
   const p = cmdChain.then(run, run);
   cmdChain = p.catch(() => {});
   return p;
 }
 
-async function commandImpl(cmd, payloadObj) {
+async function commandImpl(cmd, payloadObj, rawBytes) {
   if (!device || !outEndpoint) throw new Error("设备未连接");
-  const payload = payloadObj ? new TextEncoder().encode(JSON.stringify(payloadObj)) : new Uint8Array(0);
+  const payload = rawBytes
+    ? rawBytes
+    : (payloadObj ? new TextEncoder().encode(JSON.stringify(payloadObj)) : new Uint8Array(0));
   const frame = buildFrame(cmd, payload);
-  console.log("[WebUSB] send cmd=0x" + cmd.toString(16) + " len=" + payload.length);
-  // Send large frames in small chunks so the device's bulk OUT FIFO can drain
-  // between transfers (the save payload is a few KB).
-  const CHUNK = 256;
-  if (frame.length <= CHUNK) {
+  if (frame.length <= 512) {
     await device.transferOut(outEndpoint.endpointNumber, frame);
   } else {
-    for (let off = 0; off < frame.length; off += CHUNK) {
-      await device.transferOut(outEndpoint.endpointNumber, frame.subarray(off, off + CHUNK));
+    // Large frames (legacy save) go out in small chunks.
+    for (let off = 0; off < frame.length; off += 256) {
+      await device.transferOut(outEndpoint.endpointNumber, frame.subarray(off, off + 256));
     }
-    console.log("[WebUSB] sent " + frame.length + " bytes in chunks");
   }
   const resp = await readFrame();
-  console.log("[WebUSB] cmd=0x" + cmd.toString(16) + " status=" + resp.status + " len=" + resp.payload.length);
   if (resp.status !== 0) {
     throw new Error("设备返回错误 (status=" + resp.status + ")");
   }
@@ -328,7 +328,14 @@ async function saveKeymap() {
   btn.disabled = true;
   btn.textContent = "保存中...";
   try {
-    const res = await command(CMD.KEYMAP_SAVE, keymap);
+    // Chunked upload: many small commands instead of one large bulk OUT
+    // transfer (large transfers could stall the vendor endpoint).
+    const json = new TextEncoder().encode(JSON.stringify(keymap));
+    await command(CMD.KEYMAP_BEGIN);
+    for (let off = 0; off < json.length; off += 64) {
+      await command(CMD.KEYMAP_DATA, null, json.subarray(off, off + 64));
+    }
+    const res = await command(CMD.KEYMAP_COMMIT);
     if (res && res.error) {
       toast("保存失败: " + res.error, true);
       return;
