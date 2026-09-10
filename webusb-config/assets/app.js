@@ -16,14 +16,6 @@
   const HID_GROUPS = Mirc003.HID_GROUPS;
   const CONSUMER_GROUPS = Mirc003.CONSUMER_GROUPS;
 
-  // Grid placement classes so the keymap looks like the physical remote.
-  const KEY_POS = {
-    0x66: "k-power", 0xc0: "k-tv", 0x04: "k-voice",
-    0x52: "k-up", 0x50: "k-left", 0x28: "k-ok", 0x4f: "k-right", 0x51: "k-down",
-    0xf1: "k-back", 0x24: "k-home", 0x5d: "k-menu",
-    0x80: "k-volup", 0x81: "k-voldown",
-  };
-
   let keymap = null;
   let activeLayer = 0;
   let logTimer = null;
@@ -276,23 +268,55 @@
     return text;
   }
 
+  function makeKeyCard(layer, vk, extraClass, glyph) {
+    const pk = PHYSICAL_KEYS.find((k) => k.vk === vk);
+    const b = getBinding(layer, vk);
+    const click = b ? actionSummary(b, "click") : null;
+    const el = document.createElement("div");
+    el.className = "key-card " + (extraClass || "");
+    el.innerHTML = `
+      <div class="key-name">${glyph || pk.name}</div>
+      <div class="action ${click ? "" : "dim"}">${click || "未配置"}</div>`;
+    el.onclick = () => openEditor(pk);
+    return el;
+  }
+
   function renderKeymapGrid() {
     const host = $("keymap-grid");
     host.innerHTML = "";
     const layer = getLayer(activeLayer);
     if (!layer) return;
     host.className = "remote";
-    PHYSICAL_KEYS.forEach((pk) => {
-      const b = getBinding(layer, pk.vk);
-      const card = document.createElement("div");
-      card.className = "key-card " + (KEY_POS[pk.vk] || "");
-      const click = b ? actionSummary(b, "click") : null;
-      card.innerHTML = `
-        <div class="key-name">${pk.name}</div>
-        <div class="action ${click ? "" : "dim"}">${click || "未配置"}</div>`;
-      card.onclick = () => openEditor(pk);
-      host.appendChild(card);
-    });
+
+    // Top: power / voice
+    const top = document.createElement("div");
+    top.className = "remote-row";
+    top.append(makeKeyCard(layer, 0x66), makeKeyCard(layer, 0x04));
+    host.appendChild(top);
+
+    // D-pad: up/left/OK/right/down
+    const dpad = document.createElement("div");
+    dpad.className = "dpad";
+    dpad.append(
+      makeKeyCard(layer, 0x52, "d-up", "↑"),
+      makeKeyCard(layer, 0x50, "d-left", "←"),
+      makeKeyCard(layer, 0x28, "d-ok", "OK"),
+      makeKeyCard(layer, 0x4f, "d-right", "→"),
+      makeKeyCard(layer, 0x51, "d-down", "↓")
+    );
+    host.appendChild(dpad);
+
+    // Back / home / menu
+    const mid = document.createElement("div");
+    mid.className = "remote-row";
+    mid.append(makeKeyCard(layer, 0xf1), makeKeyCard(layer, 0x24), makeKeyCard(layer, 0x5d));
+    host.appendChild(mid);
+
+    // Volume rocker + TV
+    const bottom = document.createElement("div");
+    bottom.className = "remote-row";
+    bottom.append(makeKeyCard(layer, 0x80), makeKeyCard(layer, 0x81), makeKeyCard(layer, 0xc0));
+    host.appendChild(bottom);
   }
 
   /* ------------------------- action editor ------------------------- */
