@@ -16,6 +16,14 @@
   const HID_GROUPS = Mirc003.HID_GROUPS;
   const CONSUMER_GROUPS = Mirc003.CONSUMER_GROUPS;
 
+  // Grid placement classes so the keymap looks like the physical remote.
+  const KEY_POS = {
+    0x66: "k-power", 0xc0: "k-tv", 0x04: "k-voice",
+    0x52: "k-up", 0x50: "k-left", 0x28: "k-ok", 0x4f: "k-right", 0x51: "k-down",
+    0xf1: "k-back", 0x24: "k-home", 0x5d: "k-menu",
+    0x80: "k-volup", 0x81: "k-voldown",
+  };
+
   let keymap = null;
   let activeLayer = 0;
   let logTimer = null;
@@ -273,19 +281,15 @@
     host.innerHTML = "";
     const layer = getLayer(activeLayer);
     if (!layer) return;
+    host.className = "remote";
     PHYSICAL_KEYS.forEach((pk) => {
       const b = getBinding(layer, pk.vk);
       const card = document.createElement("div");
-      card.className = "key-card";
+      card.className = "key-card " + (KEY_POS[pk.vk] || "");
       const click = b ? actionSummary(b, "click") : null;
-      const long = b ? actionSummary(b, "long") : null;
-      const dbl = b ? actionSummary(b, "double") : null;
       card.innerHTML = `
         <div class="key-name">${pk.name}</div>
-        <div class="key-code">0x${pk.vk.toString(16).toUpperCase().padStart(2, "0")}</div>
-        <div class="action ${click ? "" : "dim"}">单击: ${click || "无"}</div>
-        <div class="action ${long ? "" : "dim"}">长按: ${long || "无"}</div>
-        <div class="action ${dbl ? "" : "dim"}">双击: ${dbl || "无"}</div>`;
+        <div class="action ${click ? "" : "dim"}">${click || "未配置"}</div>`;
       card.onclick = () => openEditor(pk);
       host.appendChild(card);
     });
