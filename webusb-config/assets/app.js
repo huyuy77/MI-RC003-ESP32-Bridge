@@ -24,10 +24,10 @@
     menu: '<svg viewBox="0 0 24 24"><path d="M5 7h14M5 12h14M5 17h14"/></svg>',
   };
   const DPAD_ICON = {
-    up: '<svg viewBox="0 0 24 24"><path d="M6 15l6-6 6 6"/></svg>',
-    down: '<svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>',
-    left: '<svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg>',
-    right: '<svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>',
+    up: '<svg viewBox="0 0 24 24"><path d="M12 6.5l6.5 9.5h-13z"/></svg>',
+    down: '<svg viewBox="0 0 24 24"><path d="M12 17.5l-6.5-9.5h13z"/></svg>',
+    left: '<svg viewBox="0 0 24 24"><path d="M6.5 12l9.5-6.5v13z"/></svg>',
+    right: '<svg viewBox="0 0 24 24"><path d="M17.5 12l-9.5 6.5v-13z"/></svg>',
   };
 
   let keymap = null;

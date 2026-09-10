@@ -231,9 +231,9 @@ main { max-width: 1000px; margin: 0 auto; padding: 26px 24px 90px; }
 /* ----------------------------- remote (Xiaomi-style) ----------------------------- */
 .remote {
   position: relative;
-  width: min(292px, 82vw);
+  width: min(248px, 76vw);
   margin: 0 auto;
-  padding: 26px 24px 28px;
+  padding: 34px 20px 44px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -254,7 +254,7 @@ main { max-width: 1000px; margin: 0 auto; padding: 26px 24px 90px; }
   width: 100%;
   display: flex;
   justify-content: space-between;
-  margin-bottom: 30px;
+  margin-bottom: 38px;
 }
 .utility, .round, .volume button {
   display: grid;
@@ -281,9 +281,9 @@ main { max-width: 1000px; margin: 0 auto; padding: 26px 24px 90px; }
 
 .dpad {
   position: relative;
-  width: min(168px, 58vw);
+  width: min(152px, 52vw);
   aspect-ratio: 1;
-  margin: 0 0 28px;
+  margin: 0 0 40px;
   padding: 6px;
   border-radius: 50%;
   background: #27282a;
@@ -298,51 +298,58 @@ main { max-width: 1000px; margin: 0 auto; padding: 26px 24px 90px; }
   background: transparent;
   border: none;
   border-radius: 50%;
-  color: #b0b1b3;
+  color: #a9aaad;
   cursor: pointer;
   transition: background 0.15s ease, color 0.15s ease;
 }
-.dp svg {
-  width: 24px; height: 24px; fill: none;
-  stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
-}
+.dp svg { width: 22px; height: 22px; fill: currentColor; stroke: none; }
 .dp:hover { background: rgba(255, 255, 255, 0.1); color: #fff; }
 .dp.up    { grid-area: 1 / 2; }
 .dp.down  { grid-area: 3 / 2; }
 .dp.left  { grid-area: 2 / 1; }
 .dp.right { grid-area: 2 / 3; }
-.dp.ok    { grid-area: 2 / 2; }
+.dp.ok    { position: relative; grid-area: 2 / 2; }
 .dp.ok::after {
   content: "";
-  width: 54%; height: 54%;
-  border: 1px solid #606164;
+  width: 62%; height: 62%;
+  border: 1.5px solid #6a6b6e;
   border-radius: 50%;
   transition: border-color 0.15s ease, transform 0.12s ease;
 }
-.dp.ok:hover { background: transparent; }
-.dp.ok:hover::after { border-color: #fff; transform: scale(1.08); }
+.dp.ok::before {
+  content: "";
+  position: absolute;
+  left: 50%; top: 50%;
+  width: 22%; height: 22%;
+  transform: translate(-50%, -50%);
+  background: #85868a;
+  border-radius: 50%;
+  transition: background 0.15s ease;
+}
+.dp.ok:hover::after { border-color: #fff; transform: scale(1.06); }
+.dp.ok:hover::before { background: #fff; }
 
 .remote-controls {
   width: 100%;
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 16px 20px;
+  gap: 22px 14px;
   justify-items: center;
   align-items: center;
 }
-.round { width: 62px; height: 62px; border-radius: 50%; }
+.round { width: 58px; height: 58px; border-radius: 50%; }
 .round.back svg { width: 23px; }
 .round.home svg, .round.menu svg { width: 22px; }
 .round.tv { font-size: 13px; font-weight: 600; }
 .round.tv span { padding: 2px 5px; border: 1.4px solid currentColor; border-radius: 5px; }
 .volume {
-  width: 62px; height: 140px;
+  width: 58px;
   grid-row: span 2;
-  align-self: center;
+  align-self: stretch;
   overflow: hidden;
   display: grid;
   grid-template-rows: 1fr 1fr;
-  border-radius: 31px;
+  border-radius: 29px;
   border: 1px solid #343538;
   background: #27282a;
 }
