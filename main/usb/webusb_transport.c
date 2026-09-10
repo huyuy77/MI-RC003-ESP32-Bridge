@@ -16,7 +16,7 @@
 typedef struct {
     uint8_t cmd;
     uint16_t len;
-    uint8_t  payload[WEBUSB_MAX_PAYLOAD];
+    uint8_t  payload[];   // sized to the actual frame
 } webusb_request_t;
 
 static QueueHandle_t s_req_queue = NULL;
@@ -134,7 +134,8 @@ static void process_rx_bytes(const uint8_t *data, size_t len)
             break; // wait for more bytes
         }
 
-        webusb_request_t *req = (webusb_request_t *)heap_caps_malloc(sizeof(webusb_request_t), MALLOC_CAP_SPIRAM);
+        webusb_request_t *req = (webusb_request_t *)heap_caps_malloc(
+            sizeof(webusb_request_t) + payload_len, MALLOC_CAP_SPIRAM);
         if (req) {
             req->cmd = cmd;
             req->len = payload_len;
@@ -145,6 +146,8 @@ static void process_rx_bytes(const uint8_t *data, size_t len)
             if (xQueueSend(s_req_queue, &req, 0) != pdTRUE) {
                 free(req); // queue full, drop
             }
+        } else {
+            app_log("WEBUSB", "RX drop cmd=0x%02X: no mem (%u bytes)", cmd, (unsigned)payload_len);
         }
         offset += WEBUSB_FRAME_HEADER_LEN + payload_len;
     }
@@ -188,7 +191,12 @@ void tud_vendor_rx_cb(uint8_t idx, const uint8_t *buffer, uint16_t bufsize)
 
     uint8_t tmp[128];
     uint32_t n;
+    uint32_t total = 0;
     while ((n = tud_vendor_read(tmp, sizeof(tmp))) > 0) {
         process_rx_bytes(tmp, n);
+        total += n;
+    }
+    if (total > 200) {
+        app_log("WEBUSB", "OUT %u bytes", (unsigned)total);
     }
 }

@@ -213,6 +213,7 @@ async function commandImpl(cmd, payloadObj) {
     for (let off = 0; off < frame.length; off += CHUNK) {
       await device.transferOut(outEndpoint.endpointNumber, frame.subarray(off, off + CHUNK));
     }
+    console.log("[WebUSB] sent " + frame.length + " bytes in chunks");
   }
   const resp = await readFrame();
   console.log("[WebUSB] cmd=0x" + cmd.toString(16) + " status=" + resp.status + " len=" + resp.payload.length);
@@ -335,6 +336,7 @@ async function saveKeymap() {
     toast("按键配置已保存");
     await loadKeymap();
   } catch (e) {
+    console.log("[WebUSB] save error:", e && e.message ? e.message : e);
     toast("保存失败: " + e.message, true);
   } finally {
     savingKeymap = false;
