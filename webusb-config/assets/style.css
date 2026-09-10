@@ -303,11 +303,11 @@ main { max-width: 1000px; margin: 0 auto; padding: 26px 24px 90px; }
 .arc.left  { border-left-color: currentColor; clip-path: polygon(0 0, 0 100%, 50% 50%); }
 .arc:hover { color: #56585d; }
 .arc:active { color: #6b6d73; }
-.arc svg { position: absolute; width: 15px; height: 15px; fill: currentColor; }
+.arc svg { position: absolute; width: 15px; height: 15px; fill: #fff; }
 .arc.up svg    { top: calc(-1 * var(--ring) / 2); left: 50%; transform: translate(-50%, -50%); }
-.arc.down svg  { bottom: calc(-1 * var(--ring) / 2); left: 50%; transform: translate(-50%, -50%); }
+.arc.down svg  { bottom: calc(-1 * var(--ring) / 2); left: 50%; transform: translate(-50%, 50%); }
 .arc.left svg  { left: calc(-1 * var(--ring) / 2); top: 50%; transform: translate(-50%, -50%); }
-.arc.right svg { right: calc(-1 * var(--ring) / 2); top: 50%; transform: translate(-50%, -50%); }
+.arc.right svg { right: calc(-1 * var(--ring) / 2); top: 50%; transform: translate(50%, -50%); }
 /* OK key fills the area inside the white ring */
 .dp.ok {
   position: absolute;
