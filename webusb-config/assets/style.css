@@ -226,6 +226,8 @@ input[type="text"], input[type="number"], select, textarea {
 textarea.raw { min-height: 220px; font-family: "Cascadia Code", Consolas, monospace; }
 .check { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 13px; }
 .check input { width: auto; }
+.mods { display: flex; flex-wrap: wrap; gap: 8px 14px; }
+.mods .check { font-size: 12px; }
 .action-block {
   border: 1px dashed var(--border);
   border-radius: 10px;

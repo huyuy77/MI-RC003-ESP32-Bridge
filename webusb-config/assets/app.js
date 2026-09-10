@@ -47,16 +47,26 @@ const PHYSICAL_KEYS = [
   { vk: 0xc0, name: "电视键" },
 ];
 
-const HID_USAGES = [
-  [0x28, "Enter 回车"], [0x29, "Esc"], [0x2a, "Backspace"], [0x2b, "Tab"],
-  [0x2c, "Space 空格"], [0x4f, "→"], [0x50, "←"], [0x51, "↓"], [0x52, "↑"],
-  [0x3e, "F5"], [0x41, "F8"], [0x07, "D"], [0x0b, "H"], [0x36, "逗号 ,"],
+const MOD_BITS = [
+  [0x01, "左Ctrl"], [0x02, "左Shift"], [0x04, "左Alt"], [0x08, "左Win"],
+  [0x10, "右Ctrl"], [0x20, "右Shift"], [0x40, "右Alt"], [0x80, "右Win"],
 ];
 
-const CONSUMER_USAGES = [
-  [0x0032, "休眠"], [0x00cd, "播放/暂停"], [0x00e2, "静音"],
-  [0x00e9, "音量+"], [0x00ea, "音量-"], [0x00b5, "下一曲"],
-  [0x00b6, "上一曲"], [0x0223, "浏览器主页"], [0x0224, "浏览器返回"],
+const HID_GROUPS = [
+  ["字母", [[0x04,"A"],[0x05,"B"],[0x06,"C"],[0x07,"D"],[0x08,"E"],[0x09,"F"],[0x0a,"G"],[0x0b,"H"],[0x0c,"I"],[0x0d,"J"],[0x0e,"K"],[0x0f,"L"],[0x10,"M"],[0x11,"N"],[0x12,"O"],[0x13,"P"],[0x14,"Q"],[0x15,"R"],[0x16,"S"],[0x17,"T"],[0x18,"U"],[0x19,"V"],[0x1a,"W"],[0x1b,"X"],[0x1c,"Y"],[0x1d,"Z"]]],
+  ["数字", [[0x1e,"1 !"],[0x1f,"2 @"],[0x20,"3 #"],[0x21,"4 $"],[0x22,"5 %"],[0x23,"6 ^"],[0x24,"7 &"],[0x25,"8 *"],[0x26,"9 ("],[0x27,"0 )"]]],
+  ["常用", [[0x28,"Enter 回车"],[0x29,"Esc"],[0x2a,"Backspace"],[0x2b,"Tab"],[0x2c,"Space 空格"],[0x39,"CapsLock"],[0x65,"Menu 菜单"]]],
+  ["符号", [[0x2d,"- _"],[0x2e,"= +"],[0x2f,"[ {"],[0x30,"] }"],[0x31,"\\ |"],[0x33,"; :"],[0x34,"' \""],[0x35,"` ~"],[0x36,", <"],[0x37,". >"],[0x38,"/ ?"]]],
+  ["功能键", [[0x3a,"F1"],[0x3b,"F2"],[0x3c,"F3"],[0x3d,"F4"],[0x3e,"F5"],[0x3f,"F6"],[0x40,"F7"],[0x41,"F8"],[0x42,"F9"],[0x43,"F10"],[0x44,"F11"],[0x45,"F12"],[0x68,"F13"],[0x69,"F14"],[0x6a,"F15"],[0x6b,"F16"],[0x6c,"F17"],[0x6d,"F18"],[0x6e,"F19"],[0x6f,"F20"],[0x70,"F21"],[0x71,"F22"],[0x72,"F23"],[0x73,"F24"]]],
+  ["导航", [[0x49,"Insert"],[0x4a,"Home"],[0x4b,"PageUp"],[0x4c,"Delete"],[0x4d,"End"],[0x4e,"PageDown"],[0x4f,"方向→"],[0x50,"方向←"],[0x51,"方向↓"],[0x52,"方向↑"],[0x46,"PrintScreen"],[0x47,"ScrollLock"],[0x48,"Pause"]]],
+  ["小键盘", [[0x53,"NumLock"],[0x54,"/"],[0x55,"*"],[0x56,"-"],[0x57,"+"],[0x58,"Num Enter"],[0x59,"1"],[0x5a,"2"],[0x5b,"3"],[0x5c,"4"],[0x5d,"5"],[0x5e,"6"],[0x5f,"7"],[0x60,"8"],[0x61,"9"],[0x62,"0"],[0x63,"."]]],
+];
+
+const CONSUMER_GROUPS = [
+  ["媒体", [[0xcd,"播放/暂停"],[0xb5,"下一曲"],[0xb6,"上一曲"],[0xb7,"停止"],[0xb3,"快进"],[0xb4,"快退"]]],
+  ["音量", [[0xe9,"音量+"],[0xea,"音量-"],[0xe2,"静音"]]],
+  ["系统", [[0x30,"电源"],[0x32,"睡眠"],[0x183,"媒体选择"]]],
+  ["浏览器", [[0x223,"浏览器主页"],[0x224,"浏览器返回"],[0x225,"浏览器前进"],[0x227,"浏览器刷新"],[0x221,"浏览器搜索"]]],
 ];
 
 let device = null;
@@ -305,7 +315,17 @@ async function loadKeymap() {
   }
 }
 
+let savingKeymap = false;
+
 async function saveKeymap() {
+  // Guard against rapid repeated clicks: each save triggers an NVS flash
+  // write, and several in a row can disrupt the USB link.
+  if (savingKeymap) return;
+  savingKeymap = true;
+  const btn = $("btn-keymap-save");
+  const oldText = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = "保存中...";
   try {
     const res = await command(CMD.KEYMAP_SAVE, keymap);
     if (res && res.error) {
@@ -316,6 +336,10 @@ async function saveKeymap() {
     await loadKeymap();
   } catch (e) {
     toast("保存失败: " + e.message, true);
+  } finally {
+    savingKeymap = false;
+    btn.disabled = false;
+    btn.textContent = oldText;
   }
 }
 
@@ -431,10 +455,18 @@ function renderActionFields(prefix, b) {
   const cons = b[prefix + "_cons"] ?? 0;
   const layer = b[prefix + "_layer"] ?? 0;
   const ms = b[prefix + "_ms"] ?? (prefix === "long" ? 600 : 250);
-  const disabled = prefix === "click" ? "disabled" : "";
 
-  const usageOptions = HID_USAGES.map(([v, n]) => `<option value="${v}" ${v === key ? "selected" : ""}>${n} (0x${v.toString(16)})</option>`).join("");
-  const consumerOptions = CONSUMER_USAGES.map(([v, n]) => `<option value="${v}" ${v === cons ? "selected" : ""}>${n} (0x${v.toString(16)})</option>`).join("");
+  const usageOptions = HID_GROUPS.map(([g, items]) =>
+    `<optgroup label="${g}">` + items.map(([v, n]) =>
+      `<option value="${v}" ${v === key ? "selected" : ""}>${n}</option>`).join("") + `</optgroup>`
+  ).join("");
+  const consumerOptions = CONSUMER_GROUPS.map(([g, items]) =>
+    `<optgroup label="${g}">` + items.map(([v, n]) =>
+      `<option value="${v}" ${v === cons ? "selected" : ""}>${n}</option>`).join("") + `</optgroup>`
+  ).join("");
+  const modChecks = MOD_BITS.map(([bit, name]) =>
+    `<label class="check"><input type="checkbox" class="f-mod" value="${bit}" ${(mod & bit) ? "checked" : ""}/>${name}</label>`
+  ).join("");
 
   return `
     <div class="action-block" data-prefix="${prefix}">
@@ -448,18 +480,20 @@ function renderActionFields(prefix, b) {
         </div>
         ${prefix !== "click" ? `<div class="field"><label>触发时间 (ms)</label><input type="number" class="f-ms" value="${ms}" min="50" max="3000"/></div>` : ""}
       </div>
-      <div class="inline f-keyboard">
-        <div class="field"><label>修饰键 (0x00-0xFF)</label><input type="number" class="f-mod" value="${mod}" min="0" max="255"/></div>
-        <div class="field"><label>按键 HID 码</label>
-          <select class="f-key">${usageOptions}</select>
+      <div class="f-keyboard">
+        <div class="field"><label>修饰键（可多选）</label><div class="mods">${modChecks}</div></div>
+        <div class="inline">
+          <div class="field"><label>按键</label><select class="f-key">${usageOptions}</select></div>
+          <div class="field"><label>自定义按键码（0 = 用下拉选择）</label><input type="number" class="f-keynum" value="${key}" min="0" max="255"/></div>
         </div>
-        <div class="field"><label>自定义按键码</label><input type="number" class="f-keynum" value="${key}" min="0" max="255"/></div>
       </div>
-      <div class="inline f-consumer">
-        <div class="field"><label>多媒体码</label><select class="f-cons">${consumerOptions}</select></div>
-        <div class="field"><label>自定义多媒体码</label><input type="number" class="f-consnum" value="${cons}" min="0" max="65535"/></div>
+      <div class="f-consumer">
+        <div class="inline">
+          <div class="field"><label>多媒体键</label><select class="f-cons">${consumerOptions}</select></div>
+          <div class="field"><label>自定义多媒体码（0 = 用下拉选择）</label><input type="number" class="f-consnum" value="${cons}" min="0" max="65535"/></div>
+        </div>
       </div>
-      <div class="inline f-layer">
+      <div class="f-layer">
         <div class="field"><label>目标层级 (1-4)</label><input type="number" class="f-layer" value="${layer}" min="0" max="4"/></div>
       </div>
     </div>`;
@@ -490,9 +524,9 @@ function refreshFieldVisibility() {
     const typeSel = block.querySelector(".f-type");
     if (!typeSel) return;
     const type = parseInt(typeSel.value, 10);
-    block.querySelector(".f-keyboard").style.display = (type === 1 || type === 2 || type === 7) ? "flex" : "none";
-    block.querySelector(".f-consumer").style.display = (type === 4) ? "flex" : "none";
-    block.querySelector(".f-layer").style.display = (type === 9) ? "flex" : "none";
+    block.querySelector(".f-keyboard").style.display = (type === 1 || type === 2 || type === 7) ? "block" : "none";
+    block.querySelector(".f-consumer").style.display = (type === 4) ? "block" : "none";
+    block.querySelector(".f-layer").style.display = (type === 9) ? "block" : "none";
   });
 }
 
@@ -500,8 +534,10 @@ function readActionFields(block) {
   const type = parseInt(block.querySelector(".f-type").value, 10);
   const hasBox = block.querySelector(".f-has");
   const has = hasBox ? hasBox.checked : true;
+  let mod = 0;
+  block.querySelectorAll(".f-mod").forEach((c) => { if (c.checked) mod |= parseInt(c.value, 10); });
   // Prefer the custom number only if it is non-zero, otherwise use the
-  // dropdown selection (the number input defaults to 0 and used to shadow it).
+  // dropdown selection (the number input defaults to 0).
   const keyNum = parseInt(block.querySelector(".f-keynum")?.value || "0", 10);
   const keySel = parseInt(block.querySelector(".f-key")?.value || "0", 10);
   const consNum = parseInt(block.querySelector(".f-consnum")?.value || "0", 10);
@@ -509,7 +545,7 @@ function readActionFields(block) {
   return {
     has,
     type,
-    mod: parseInt(block.querySelector(".f-mod")?.value || "0", 10),
+    mod,
     key: keyNum || keySel,
     cons: consNum || consSel,
     layer: parseInt(block.querySelector(".f-layer")?.value || "0", 10),
