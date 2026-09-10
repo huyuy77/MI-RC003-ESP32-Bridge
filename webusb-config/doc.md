@@ -1,5 +1,7 @@
 # MIRC003 Bridge · WebUI JavaScript API
 
+> **WebUI 版本**：`1.0`（见 `assets/app.js` 顶部的 `WEBUI_VERSION`，独立于固件版本，仅 UI 变更时递增）。页面右上角标题栏会显示 `WebUI v1.0`。
+
 `assets/mirc003.js` 是一个无依赖的浏览器端库，封装了与 MIRC003 Bridge 固件之间的
 WebUSB 通信协议。第三方可以**只写自己的 HTML/JS**，引入该库后调用其 API，
 完全替换默认的 `assets/app.js`。

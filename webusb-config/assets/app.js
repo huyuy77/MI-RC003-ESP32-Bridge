@@ -9,6 +9,9 @@
 (function () {
   "use strict";
 
+  // WebUI version (independent of the firmware version). Bump on UI changes.
+  const WEBUI_VERSION = "1.0";
+
   const dev = new Mirc003();
   const ACTION = Mirc003.ACTION;
   const PHYSICAL_KEYS = Mirc003.PHYSICAL_KEYS;
@@ -566,6 +569,8 @@
   }
 
   function init() {
+    const webuiEl = $("webui-version");
+    if (webuiEl) webuiEl.textContent = "WebUI v" + WEBUI_VERSION;
     if (!navigator.usb) $("unsupported").classList.remove("hidden");
     initTabs();
 
