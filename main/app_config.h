@@ -80,13 +80,14 @@ extern "C" {
 #define USB_ITF_VENDOR            5
 
 // Endpoint addresses
+// NOTE: the ESP32-S3 DWC2 exposes very few IN endpoints (effectively EP1-EP4).
+// Keep every IN endpoint within that range.
 #define USB_EP_UAC_IN             0x81      // Isochronous IN  (microphone)
 #define USB_EP_HID_IN             0x82      // Interrupt IN    (keyboard/consumer)
-#define USB_EP_CDC_NOTIF          0x83      // Interrupt IN    (CDC notification)
-#define USB_EP_CDC_OUT            0x03      // Bulk OUT        (CDC data)
+#define USB_EP_VENDOR_IN          0x83      // Bulk IN         (WebUSB responses)
 #define USB_EP_CDC_IN             0x84      // Bulk IN         (CDC data)
+#define USB_EP_CDC_OUT            0x03      // Bulk OUT        (CDC data)
 #define USB_EP_VENDOR_OUT         0x04      // Bulk OUT        (WebUSB requests)
-#define USB_EP_VENDOR_IN          0x85      // Bulk IN         (WebUSB responses)
 
 // WebUSB bulk transfer / framing
 #define WEBUSB_FRAME_SOF0         0x4D      // 'M'
