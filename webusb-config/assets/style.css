@@ -228,89 +228,107 @@ main { max-width: 1000px; margin: 0 auto; padding: 26px 24px 90px; }
 .layer-tab.active { background: var(--text); border-color: var(--text); color: #fff; }
 .layer-tab .swatch { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 7px; vertical-align: middle; }
 
-/* ----------------------------- remote-shaped keymap ----------------------------- */
+/* ----------------------------- remote (Xiaomi-style) ----------------------------- */
 .remote {
-  max-width: 380px;
+  position: relative;
+  width: min(292px, 82vw);
   margin: 0 auto;
-  padding: 24px 24px 28px;
-  border-radius: 40px;
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  background: linear-gradient(180deg, #ffffff 0%, #f2f2f4 100%);
-  border: 1px solid var(--border);
-  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.1), 0 2px 6px rgba(0, 0, 0, 0.05);
-}
-
-.remote-row {
-  display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: 1fr;
-  gap: 12px;
-}
-
-.dpad {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  grid-template-rows: repeat(3, 1fr);
-  gap: 8px;
-  width: min(240px, 100%);
-  aspect-ratio: 1;
-  margin: 2px auto;
-  padding: 12px;
-  border-radius: 50%;
-  background: #ececef;
-  border: 1px solid var(--border);
-  box-shadow: inset 0 1px 4px rgba(0, 0, 0, 0.06);
-}
-.d-up    { grid-area: 1 / 2; }
-.d-left  { grid-area: 2 / 1; }
-.d-ok    { grid-area: 2 / 2; }
-.d-right { grid-area: 2 / 3; }
-.d-down  { grid-area: 3 / 2; }
-
-.key-card {
+  padding: 26px 24px 30px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  gap: 3px;
-  padding: 10px 8px;
-  min-height: 60px;
-  border-radius: 16px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  box-shadow: var(--shadow-sm);
+  border: 1px solid #d2d2d5;
+  border-radius: 38px;
+  background: #ededee;
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.12);
+}
+.remote::before {
+  content: "";
+  position: absolute;
+  inset: 11px;
+  border-radius: 29px;
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  pointer-events: none;
+}
+.remote-top {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+}
+.utility, .round, .volume button, .dpad .dp {
+  display: grid;
+  place-items: center;
+  background: #27282a;
+  color: #bfc0c0;
+  border: 1px solid #343538;
   cursor: pointer;
-  text-align: center;
-  transition: transform 0.12s ease, box-shadow 0.12s ease, border-color 0.12s ease;
+  font-family: inherit;
+  transition: background 0.15s ease, transform 0.1s ease, color 0.15s ease;
 }
-.key-card:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-md);
-  border-color: var(--border-strong);
+.utility:hover, .round:hover, .volume button:hover, .dpad .dp:hover { background: #34363a; color: #fff; }
+.utility:active, .round:active, .volume button:active, .dpad .dp:active { transform: scale(0.95); }
+.utility { width: 46px; height: 46px; border-radius: 50%; }
+.utility svg, .round svg {
+  width: 21px; height: 21px; fill: none;
+  stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;
 }
-.key-card:active { transform: translateY(0) scale(0.98); }
-.key-card .key-name { font-weight: 600; font-size: 13px; color: var(--text); }
-.key-card .action { font-size: 10.5px; color: var(--text-3); line-height: 1.35; word-break: break-word; }
-.key-card .action.dim { color: #c0c0c5; }
 
-/* D-pad directional keys: arrow glyphs, rounded outer edges */
-.dpad .key-card { min-height: 0; padding: 6px; }
-.dpad .key-card .key-name { font-size: 19px; line-height: 1; color: var(--text-2); }
-.dpad .key-card .action { display: none; }
-.d-up    { border-radius: 16px 16px 6px 6px; }
-.d-down  { border-radius: 6px 6px 16px 16px; }
-.d-left  { border-radius: 16px 6px 6px 16px; }
-.d-right { border-radius: 6px 16px 16px 6px; }
-.d-ok {
+.dpad {
+  position: relative;
+  width: min(166px, 58vw);
+  aspect-ratio: 1;
+  margin: 30px 0 24px;
   border-radius: 50%;
-  background: var(--accent);
-  border-color: transparent;
-  box-shadow: 0 4px 12px rgba(0, 113, 227, 0.35);
+  background: #27282a;
+  border: 1px solid #343538;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(3, 1fr);
 }
-.d-ok .key-name { color: #fff; font-size: 13px; font-weight: 600; }
-.d-ok:hover { box-shadow: 0 6px 18px rgba(0, 113, 227, 0.45); }
+.dpad .dp { background: transparent; border: none; color: #b0b1b3; font-size: 17px; }
+.dp.up    { grid-area: 1 / 2; }
+.dp.down  { grid-area: 3 / 2; }
+.dp.left  { grid-area: 2 / 1; }
+.dp.right { grid-area: 2 / 3; }
+.dp.ok    { grid-area: 2 / 2; border-radius: 50%; }
+.dp.ok::after { content: ""; width: 56%; height: 56%; border: 1px solid #606164; border-radius: 50%; }
+.dp.ok:hover::after { border-color: #9a9b9e; }
+
+.remote-controls {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px 20px;
+}
+.cell { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.round { width: 60px; height: 60px; border-radius: 50%; }
+.round.back svg { width: 23px; }
+.round.home svg, .round.menu svg { width: 22px; }
+.round.tv { font-size: 13px; font-weight: 600; }
+.round.tv span { padding: 2px 5px; border: 1.4px solid currentColor; border-radius: 5px; }
+.volume {
+  width: 60px; height: 132px;
+  grid-row: span 2;
+  justify-self: center;
+  align-self: center;
+  overflow: hidden;
+  display: grid;
+  grid-template-rows: 1fr 1fr;
+  border-radius: 30px;
+  border: 1px solid #343538;
+  background: #27282a;
+}
+.volume button { border-radius: 0; border: none; font-size: 26px; font-weight: 200; }
+.volume button:first-child { border-bottom: 1px solid #414245; }
+.cap {
+  font-size: 10px;
+  color: #a1a1a6;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: center;
+}
 
 /* ----------------------------- tables ----------------------------- */
 table { width: 100%; border-collapse: collapse; font-size: 13px; }
@@ -403,7 +421,6 @@ textarea.raw { min-height: 220px; font-family: "SF Mono", "Cascadia Code", Menlo
 @media (max-width: 640px) {
   .topbar { padding: 12px 16px; }
   main { padding: 18px 14px 70px; }
-  .remote { padding: 16px; border-radius: 30px; }
-  .dpad { width: min(200px, 100%); }
+  .remote { padding: 20px 18px 24px; border-radius: 32px; }
   .stats { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
 }

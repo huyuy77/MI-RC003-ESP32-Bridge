@@ -16,6 +16,14 @@
   const HID_GROUPS = Mirc003.HID_GROUPS;
   const CONSUMER_GROUPS = Mirc003.CONSUMER_GROUPS;
 
+  const ICON = {
+    power: '<svg viewBox="0 0 24 24"><path d="M12 3v9M7.05 5.93a8 8 0 1 0 9.9 0"/></svg>',
+    voice: '<svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21M8.5 21h7"/></svg>',
+    back: '<svg viewBox="0 0 24 24"><path d="M19 12H5M11 18l-6-6 6-6"/></svg>',
+    home: '<svg viewBox="0 0 24 24"><path d="M4 11.2 12 4l8 7.2V20H4z"/></svg>',
+    menu: '<svg viewBox="0 0 24 24"><path d="M5 7h14M5 12h14M5 17h14"/></svg>',
+  };
+
   let keymap = null;
   let activeLayer = 0;
   let logTimer = null;
@@ -268,17 +276,18 @@
     return text;
   }
 
-  function makeKeyCard(layer, vk, extraClass, glyph) {
-    const pk = PHYSICAL_KEYS.find((k) => k.vk === vk);
+  function pkOf(vk) {
+    return PHYSICAL_KEYS.find((k) => k.vk === vk);
+  }
+  function keyAction(layer, vk) {
     const b = getBinding(layer, vk);
-    const click = b ? actionSummary(b, "click") : null;
-    const el = document.createElement("div");
-    el.className = "key-card " + (extraClass || "");
-    el.innerHTML = `
-      <div class="key-name">${glyph || pk.name}</div>
-      <div class="action ${click ? "" : "dim"}">${click || "未配置"}</div>`;
-    el.onclick = () => openEditor(pk);
-    return el;
+    return b ? (actionSummary(b, "click") || "未配置") : "未配置";
+  }
+  function bindBtn(btn, layer, vk) {
+    const pk = pkOf(vk);
+    btn.title = `${pk.name}：${keyAction(layer, vk)}`;
+    btn.onclick = () => openEditor(pk);
+    return btn;
   }
 
   function renderKeymapGrid() {
@@ -288,35 +297,78 @@
     if (!layer) return;
     host.className = "remote";
 
-    // Top: power / voice
+    // Top: power (left) / voice (right)
     const top = document.createElement("div");
-    top.className = "remote-row";
-    top.append(makeKeyCard(layer, 0x66), makeKeyCard(layer, 0x04));
+    top.className = "remote-top";
+    [
+      [0x66, ICON.power],
+      [0x04, ICON.voice],
+    ].forEach(([vk, icon]) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "utility";
+      btn.innerHTML = icon;
+      top.appendChild(bindBtn(btn, layer, vk));
+    });
     host.appendChild(top);
 
-    // D-pad: up/left/OK/right/down
+    // D-pad: arrows + center OK
     const dpad = document.createElement("div");
     dpad.className = "dpad";
-    dpad.append(
-      makeKeyCard(layer, 0x52, "d-up", "↑"),
-      makeKeyCard(layer, 0x50, "d-left", "←"),
-      makeKeyCard(layer, 0x28, "d-ok", "OK"),
-      makeKeyCard(layer, 0x4f, "d-right", "→"),
-      makeKeyCard(layer, 0x51, "d-down", "↓")
-    );
+    [
+      ["up", 0x52, "⌃"],
+      ["down", 0x51, "⌄"],
+      ["left", 0x50, "‹"],
+      ["right", 0x4f, "›"],
+      ["ok", 0x28, ""],
+    ].forEach(([cls, vk, glyph]) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "dp " + cls;
+      btn.innerHTML = glyph;
+      dpad.appendChild(bindBtn(btn, layer, vk));
+    });
     host.appendChild(dpad);
 
-    // Back / home / menu
-    const mid = document.createElement("div");
-    mid.className = "remote-row";
-    mid.append(makeKeyCard(layer, 0xf1), makeKeyCard(layer, 0x24), makeKeyCard(layer, 0x5d));
-    host.appendChild(mid);
+    // Controls: back | volume / home / menu | TV
+    const controls = document.createElement("div");
+    controls.className = "remote-controls";
 
-    // Volume rocker + TV
-    const bottom = document.createElement("div");
-    bottom.className = "remote-row";
-    bottom.append(makeKeyCard(layer, 0x80), makeKeyCard(layer, 0x81), makeKeyCard(layer, 0xc0));
-    host.appendChild(bottom);
+    const cell = (vk, cls, inner) => {
+      const wrap = document.createElement("div");
+      wrap.className = "cell";
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = cls;
+      btn.innerHTML = inner;
+      bindBtn(btn, layer, vk);
+      const cap = document.createElement("span");
+      cap.className = "cap";
+      cap.textContent = keyAction(layer, vk);
+      wrap.append(btn, cap);
+      return wrap;
+    };
+
+    const volume = document.createElement("div");
+    volume.className = "volume";
+    [
+      ["＋", 0x80],
+      ["−", 0x81],
+    ].forEach(([glyph, vk]) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.innerHTML = glyph;
+      volume.appendChild(bindBtn(btn, layer, vk));
+    });
+
+    controls.append(
+      cell(0xf1, "round back", ICON.back),
+      volume,
+      cell(0x24, "round home", ICON.home),
+      cell(0x5d, "round menu", ICON.menu),
+      cell(0xc0, "round tv", "<span>TV</span>")
+    );
+    host.appendChild(controls);
   }
 
   /* ------------------------- action editor ------------------------- */
