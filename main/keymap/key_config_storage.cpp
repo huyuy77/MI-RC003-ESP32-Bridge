@@ -9,6 +9,7 @@
 #include <string>
 #include <ArduinoJson.h>
 #include "esp_heap_caps.h"
+#include "nvs.h"
 
 #define KEYMAP_NS "keymap_conf"
 
@@ -234,19 +235,35 @@ bool key_config_storage_save(key_mapper_engine_t *engine)
 {
     if (!engine) return false;
 
+    // Write every layer through a single NVS handle and commit once, to keep
+    // the flash write (cache-off) window short.
+    nvs_handle_t h;
+    if (nvs_open(KEYMAP_NS, NVS_READWRITE, &h) != ESP_OK) {
+        app_log("KEYMAP", "nvs_open(%s) failed", KEYMAP_NS);
+        return false;
+    }
+
     key_engine_lock();
     bool ok = true;
     for (int i = 0; i < MAX_LAYERS; i++) {
         char key[8];
         layer_key(key, sizeof(key), i);
-        if (config_store_set_blob(KEYMAP_NS, key, &engine->layers[i], sizeof(key_layer_t)) != ESP_OK) {
+        if (nvs_set_blob(h, key, &engine->layers[i], sizeof(key_layer_t)) != ESP_OK) {
             app_log("KEYMAP", "NVS write failed for %s", key);
             ok = false;
         }
     }
     uint8_t active = engine->active_layer;
-    config_store_set_blob(KEYMAP_NS, "active", &active, 1);
+    nvs_set_blob(h, "active", &active, 1);
     key_engine_unlock();
+
+    if (ok) {
+        if (nvs_commit(h) != ESP_OK) {
+            app_log("KEYMAP", "NVS commit failed");
+            ok = false;
+        }
+    }
+    nvs_close(h);
 
     if (ok) {
         app_log("KEYMAP", "Keymap saved to NVS");

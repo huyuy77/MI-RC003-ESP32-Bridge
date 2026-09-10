@@ -500,16 +500,21 @@ function readActionFields(block) {
   const type = parseInt(block.querySelector(".f-type").value, 10);
   const hasBox = block.querySelector(".f-has");
   const has = hasBox ? hasBox.checked : true;
-  const out = {
+  // Prefer the custom number only if it is non-zero, otherwise use the
+  // dropdown selection (the number input defaults to 0 and used to shadow it).
+  const keyNum = parseInt(block.querySelector(".f-keynum")?.value || "0", 10);
+  const keySel = parseInt(block.querySelector(".f-key")?.value || "0", 10);
+  const consNum = parseInt(block.querySelector(".f-consnum")?.value || "0", 10);
+  const consSel = parseInt(block.querySelector(".f-cons")?.value || "0", 10);
+  return {
     has,
     type,
     mod: parseInt(block.querySelector(".f-mod")?.value || "0", 10),
-    key: parseInt(block.querySelector(".f-keynum")?.value || block.querySelector(".f-key")?.value || "0", 10),
-    cons: parseInt(block.querySelector(".f-consnum")?.value || block.querySelector(".f-cons")?.value || "0", 10),
+    key: keyNum || keySel,
+    cons: consNum || consSel,
     layer: parseInt(block.querySelector(".f-layer")?.value || "0", 10),
     ms: parseInt(block.querySelector(".f-ms")?.value || "0", 10),
   };
-  return out;
 }
 
 function applyEditor() {
@@ -676,6 +681,14 @@ function init() {
   $("modal-apply").onclick = applyEditor;
   document.addEventListener("change", (e) => {
     if (e.target.classList.contains("f-type")) refreshFieldVisibility();
+    if (e.target.classList.contains("f-key")) {
+      const num = e.target.closest(".f-keyboard")?.querySelector(".f-keynum");
+      if (num) num.value = e.target.value;
+    }
+    if (e.target.classList.contains("f-cons")) {
+      const num = e.target.closest(".f-consumer")?.querySelector(".f-consnum");
+      if (num) num.value = e.target.value;
+    }
   });
 
   navigator.usb?.addEventListener("disconnect", (e) => {
