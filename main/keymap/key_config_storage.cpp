@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <string>
 #include <ArduinoJson.h>
+#include "esp_heap_caps.h"
 
 #define KEYMAP_NS "keymap_conf"
 
@@ -171,9 +172,16 @@ bool key_config_from_json(key_mapper_engine_t *engine, const char *json_str)
     }
 
     // Parse into a scratch copy so the live engine is never half-updated.
-    key_layer_t tmp[MAX_LAYERS];
+    // Allocated from PSRAM: sizeof(key_layer_t) * MAX_LAYERS is ~6 KB, which
+    // would overflow the WebUSB task stack if kept as a local array.
+    key_layer_t *tmp = (key_layer_t *)heap_caps_malloc(sizeof(key_layer_t) * MAX_LAYERS,
+                                                       MALLOC_CAP_SPIRAM);
+    if (!tmp) {
+        app_log("KEYMAP", "no memory for scratch keymap");
+        return false;
+    }
     key_engine_lock();
-    memcpy(tmp, engine->layers, sizeof(tmp));
+    memcpy(tmp, engine->layers, sizeof(key_layer_t) * MAX_LAYERS);
     key_engine_unlock();
 
     bool applied = false;
@@ -205,16 +213,18 @@ bool key_config_from_json(key_mapper_engine_t *engine, const char *json_str)
     }
 
     if (!applied) {
+        heap_caps_free(tmp);
         return false;
     }
 
     key_engine_lock();
-    memcpy(engine->layers, tmp, sizeof(tmp));
+    memcpy(engine->layers, tmp, sizeof(key_layer_t) * MAX_LAYERS);
     engine->layer_count = MAX_LAYERS;
     memset(engine->states, 0, sizeof(engine->states));
     uint32_t color = engine->layers[engine->active_layer].led_color;
     key_engine_unlock();
 
+    heap_caps_free(tmp);
     led_indicator_set_layer_color(color);
     app_log("KEYMAP", "Keymap applied from JSON");
     return true;
@@ -248,13 +258,20 @@ bool key_config_storage_load(key_mapper_engine_t *engine)
 {
     if (!engine) return false;
 
-    key_layer_t tmp[MAX_LAYERS];
+    key_layer_t *tmp = (key_layer_t *)heap_caps_malloc(sizeof(key_layer_t) * MAX_LAYERS,
+                                                       MALLOC_CAP_SPIRAM);
+    if (!tmp) {
+        app_log("KEYMAP", "no memory for keymap load");
+        return false;
+    }
+
     for (int i = 0; i < MAX_LAYERS; i++) {
         char key[8];
         layer_key(key, sizeof(key), i);
         size_t n = config_store_get_blob(KEYMAP_NS, key, &tmp[i], sizeof(key_layer_t));
         if (n != sizeof(key_layer_t)) {
             app_log("KEYMAP", "Stored layer %d missing/invalid (%u bytes)", i, (unsigned)n);
+            heap_caps_free(tmp);
             key_engine_load_defaults(engine);
             return false;
         }
@@ -267,13 +284,14 @@ bool key_config_storage_load(key_mapper_engine_t *engine)
     }
 
     key_engine_lock();
-    memcpy(engine->layers, tmp, sizeof(tmp));
+    memcpy(engine->layers, tmp, sizeof(key_layer_t) * MAX_LAYERS);
     engine->layer_count = MAX_LAYERS;
     engine->active_layer = active;
     memset(engine->states, 0, sizeof(engine->states));
     uint32_t color = engine->layers[active].led_color;
     key_engine_unlock();
 
+    heap_caps_free(tmp);
     led_indicator_set_layer_color(color);
     return true;
 }

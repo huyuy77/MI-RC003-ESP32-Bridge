@@ -167,7 +167,7 @@ void webusb_transport_init(void)
                                            MALLOC_CAP_SPIRAM);
     s_tx_buf = (uint8_t *)heap_caps_malloc(WEBUSB_FRAME_HEADER_LEN + WEBUSB_MAX_PAYLOAD,
                                            MALLOC_CAP_SPIRAM);
-    xTaskCreatePinnedToCore(webusb_task, "webusb", 8192, NULL, 4, NULL, TASK_CORE_USB);
+    xTaskCreatePinnedToCore(webusb_task, "webusb", 12288, NULL, 4, NULL, TASK_CORE_USB);
     app_log("WEBUSB", "Transport ready (rx=%s tx=%s)",
             s_rx_acc ? "PSRAM" : "ERR", s_tx_buf ? "PSRAM" : "ERR");
 }
