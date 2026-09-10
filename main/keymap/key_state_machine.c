@@ -554,6 +554,26 @@ void key_engine_tick(key_mapper_engine_t *engine, uint32_t now_ms)
     key_engine_unlock();
 }
 
+uint8_t key_engine_get_pressed_vk(const key_mapper_engine_t *engine)
+{
+    static const uint8_t raw_keys[] = {
+        MI_KEY_POWER, MI_KEY_VOICE, MI_KEY_UP, MI_KEY_DOWN,
+        MI_KEY_LEFT, MI_KEY_RIGHT, MI_KEY_OK, MI_KEY_BACK,
+        MI_KEY_HOME, MI_KEY_MENU, MI_KEY_VOL_UP, MI_KEY_VOL_DOWN, MI_KEY_TV
+    };
+    uint8_t vk = 0;
+    if (!engine) return 0;
+    key_engine_lock();
+    for (int slot = 0; slot < 13; slot++) {
+        if (engine->states[slot].is_pressed) {
+            vk = raw_keys[slot];
+            break;
+        }
+    }
+    key_engine_unlock();
+    return vk;
+}
+
 void key_engine_release_all(key_mapper_engine_t *engine, uint32_t now_ms)
 {
     if (!engine) return;

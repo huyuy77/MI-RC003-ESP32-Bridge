@@ -134,7 +134,7 @@ dev.off("disconnect", handler);
 | :--- | :--- | :--- |
 | `deviceInfo()` | `Promise<object>` | `{ name, version, build, hardware, protocol, capabilities[] }` |
 | `status()` | `Promise<object>` | `{ firmware, version, build, uptime_sec, ble_state, active_layer, battery, frames_decoded, samples_pushed, free_heap, free_psram, usb_mounted }` |
-| `telemetry()` | `Promise<object>` | 最近一次按键事件 |
+| `telemetry()` | `Promise<object>` | 实时按键状态：`{ source_vk, is_pressed, pressed_vk, duration_ms, action_type, modifier, key_code, consumer_code, active_layer }`。`pressed_vk` 为当前按下的物理键码（`0` = 未按下） |
 
 `ble_state`：`0` 未连接 / `1` 扫描中 / `2` 连接中 / `3` 已连接 / `4` 语音中。
 `battery`：遥控器电量百分比（`0`~`100`），未知时为 `-1`。

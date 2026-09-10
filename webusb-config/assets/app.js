@@ -20,6 +20,7 @@
   let activeLayer = 0;
   let logTimer = null;
   let statusTimer = null;
+  let telemetryTimer = null;
   let savingKeymap = false;
 
   const $ = (id) => document.getElementById(id);
@@ -111,7 +112,12 @@
 
   async function refreshTelemetry() {
     try {
-      $("telemetry").textContent = JSON.stringify(await dev.telemetry(), null, 2);
+      const t = await dev.telemetry();
+      const pk = PHYSICAL_KEYS.find((k) => k.vk === t.pressed_vk);
+      const nameEl = $("live-key-name");
+      nameEl.textContent = pk ? pk.name : "—";
+      nameEl.classList.toggle("active", !!pk);
+      $("telemetry").textContent = JSON.stringify(t, null, 2);
     } catch (e) { /* ignore */ }
   }
 
@@ -449,11 +455,17 @@
     logTimer = setInterval(() => {
       if ($("log-auto").checked) refreshLogs();
     }, 3000);
+    telemetryTimer = setInterval(() => {
+      if ($("telemetry-live").checked) refreshTelemetry();
+    }, 150);
   }
   function stopAutoRefresh() {
     clearInterval(statusTimer);
     clearInterval(logTimer);
-    statusTimer = logTimer = null;
+    clearInterval(telemetryTimer);
+    statusTimer = logTimer = telemetryTimer = null;
+    const nameEl = $("live-key-name");
+    if (nameEl) { nameEl.textContent = "—"; nameEl.classList.remove("active"); }
   }
 
   /* ------------------------- wiring ------------------------- */
@@ -479,7 +491,6 @@
 
     $("btn-connect").onclick = connect;
     $("btn-disconnect").onclick = disconnect;
-    $("btn-telemetry").onclick = refreshTelemetry;
     $("btn-keymap-refresh").onclick = loadKeymap;
     $("btn-keymap-save").onclick = saveKeymap;
     $("btn-keymap-reset").onclick = resetKeymap;

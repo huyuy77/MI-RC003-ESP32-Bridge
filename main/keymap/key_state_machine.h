@@ -112,6 +112,9 @@ void key_engine_feed_key(key_mapper_engine_t *engine, uint8_t raw_key_code, bool
 void key_engine_tick(key_mapper_engine_t *engine, uint32_t now_ms);
 void key_engine_release_all(key_mapper_engine_t *engine, uint32_t now_ms);
 
+/** @brief Return the canonical code of a currently pressed key, or 0 if none. */
+uint8_t key_engine_get_pressed_vk(const key_mapper_engine_t *engine);
+
 /** @brief Take/release the engine's recursive mutex (for bulk layer updates). */
 void key_engine_lock(void);
 void key_engine_unlock(void);

@@ -454,6 +454,7 @@ size_t key_telemetry_to_json(const key_mapper_engine_t *engine, char *out, size_
     JsonDocument doc;
     doc["source_vk"] = engine->last_telemetry.source_vk;
     doc["is_pressed"] = engine->last_telemetry.is_pressed;
+    doc["pressed_vk"] = key_engine_get_pressed_vk(engine);
     doc["duration_ms"] = engine->last_telemetry.duration_ms;
     doc["action_type"] = engine->last_telemetry.action_type;
     doc["modifier"] = engine->last_telemetry.modifier;

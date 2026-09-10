@@ -52,8 +52,12 @@
       </div>
       <div class="card">
         <div class="card-head">
-          <h3>最近按键遥测</h3>
-          <button id="btn-telemetry" class="btn small">刷新</button>
+          <h3>实时按键检测</h3>
+          <label class="check"><input type="checkbox" id="telemetry-live" checked /> 实时刷新</label>
+        </div>
+        <div class="live-key">
+          <span class="live-label">当前按下</span>
+          <span id="live-key-name" class="live-value">—</span>
         </div>
         <pre id="telemetry" class="code">-</pre>
       </div>
@@ -163,6 +167,6 @@
   <div id="toast" class="toast hidden"></div>
 
   <script src="assets/mirc003.js?v=2"></script>
-  <script src="assets/app.js?v=17"></script>
+  <script src="assets/app.js?v=18"></script>
 </body>
 </html>
