@@ -216,7 +216,9 @@ async function commandImpl(cmd, payloadObj, rawBytes) {
       await device.transferOut(outEndpoint.endpointNumber, frame.subarray(off, off + 256));
     }
   }
+  console.log("[WebUSB] send cmd=0x" + cmd.toString(16) + " len=" + payload.length);
   const resp = await readFrame();
+  console.log("[WebUSB] cmd=0x" + cmd.toString(16) + " status=" + resp.status + " len=" + resp.payload.length);
   if (resp.status !== 0) {
     throw new Error("设备返回错误 (status=" + resp.status + ")");
   }
