@@ -302,6 +302,15 @@
       .replace(/^层\s*(\d+)$/, "配置$1")
       .replace(/^模式\s*(\d+)$/, "配置$1");
   }
+  // LED indicator colour for a configuration slot, mirroring the firmware's
+  // per-layer led_color (reported as "0xRRGGBB"). Falls back to green.
+  function layerColor(layer) {
+    const raw = layer ? layer.color : null;
+    if (raw == null || raw === "") return "#30d158";
+    let v = typeof raw === "string" ? parseInt(raw.replace(/^0x/i, ""), 16) : Number(raw);
+    if (!Number.isFinite(v) || v === 0) return "#30d158";
+    return "#" + (v & 0xffffff).toString(16).padStart(6, "0");
+  }
   function getBinding(layer, vk) {
     if (!layer || !layer.bindings) return null;
     return layer.bindings.find((b) => b.source_vk === vk) || null;
@@ -323,7 +332,10 @@
       if (layer.id === deviceActiveLayer) cls += " device-active";
       btn.className = cls;
       btn.textContent = configLabel(layer);
-      btn.title = layer.id === deviceActiveLayer ? "设备当前生效的配置" : "点击切换到该配置";
+      const color = layerColor(layer);
+      btn.style.setProperty("--layer-color", color);
+      btn.title = (layer.id === deviceActiveLayer ? "设备当前生效的配置" : "点击切换到该配置") +
+        " · 指示灯 " + color.toUpperCase();
       btn.onclick = () => {
         activeLayer = layer.id;
         renderLayerTabs();
@@ -383,9 +395,7 @@
   }
   function bindBtn(btn, layer, vk) {
     const pk = pkOf(vk);
-    const b = getBinding(layer, vk);
     btn.dataset.vk = String(vk);
-    btn.classList.toggle("key-configured", !!(b && (b.has_click || b.has_long || b.has_double)));
     const show = () => {
       const el = $("remote-info");
       if (el) el.innerHTML = `<b>${pk.name}</b> · ${keyAction(layer, vk)}`;
