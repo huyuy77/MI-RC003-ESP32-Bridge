@@ -13,8 +13,10 @@
 
 #define HID_REPORT_ID_KEYBOARD 1
 #define HID_REPORT_ID_CONSUMER 2
+#define HID_REPORT_ID_MOUSE    3
 
 static SemaphoreHandle_t s_hid_mutex = NULL;
+static uint8_t s_mouse_buttons = 0;
 
 static void hid_lock(void)
 {
@@ -128,12 +130,76 @@ bool usb_hid_consumer_tap(uint16_t usage_code)
     return true;
 }
 
+// Caller must hold the HID mutex.
+static bool mouse_report_locked(uint8_t buttons, int8_t dx, int8_t dy, int8_t wheel)
+{
+    if (!tud_hid_ready()) {
+        return false;
+    }
+    if (tud_suspended()) {
+        tud_remote_wakeup();
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
+
+    hid_mouse_report_t report = {0};
+    report.buttons = buttons;
+    report.x = dx;
+    report.y = dy;
+    report.wheel = wheel;
+    tud_hid_n_report(0, HID_REPORT_ID_MOUSE, &report, sizeof(report));
+    return true;
+}
+
+bool usb_hid_mouse_button_press(uint8_t button_mask)
+{
+    hid_lock();
+    s_mouse_buttons |= button_mask;
+    bool ok = mouse_report_locked(s_mouse_buttons, 0, 0, 0);
+    hid_unlock();
+    return ok;
+}
+
+bool usb_hid_mouse_button_release(uint8_t button_mask)
+{
+    hid_lock();
+    s_mouse_buttons &= (uint8_t)~button_mask;
+    bool ok = mouse_report_locked(s_mouse_buttons, 0, 0, 0);
+    hid_unlock();
+    return ok;
+}
+
+bool usb_hid_mouse_buttons_release(void)
+{
+    hid_lock();
+    s_mouse_buttons = 0;
+    bool ok = mouse_report_locked(0, 0, 0, 0);
+    hid_unlock();
+    return ok;
+}
+
+bool usb_hid_mouse_move(int8_t dx, int8_t dy)
+{
+    hid_lock();
+    bool ok = mouse_report_locked(s_mouse_buttons, dx, dy, 0);
+    hid_unlock();
+    return ok;
+}
+
+bool usb_hid_mouse_wheel(int8_t wheel)
+{
+    hid_lock();
+    bool ok = mouse_report_locked(s_mouse_buttons, 0, 0, wheel);
+    hid_unlock();
+    return ok;
+}
+
 void usb_hid_dispatch_action(const key_action_t *action)
 {
     if (!action) return;
 
-    app_log("USB_HID", "Emit action type=%d mod=0x%02X key=0x%02X cons=0x%04X",
-            action->type, action->modifier, action->key_code, action->consumer_code);
+    app_log("USB_HID", "Emit action type=%d mod=0x%02X key=0x%02X cons=0x%04X dx=%d dy=%d wheel=%d",
+            action->type, action->modifier, action->key_code, action->consumer_code,
+            action->mouse_dx, action->mouse_dy, action->mouse_wheel);
 
     if (action->type == ACTION_VOICE_HOLD) {
         led_indicator_set(LED_STATE_MIC_STREAMING);
@@ -171,6 +237,27 @@ void usb_hid_dispatch_action(const key_action_t *action)
         case ACTION_VOICE_RELEASE:
             usb_hid_keyboard_release();
             audio_pipeline_stop_session(&g_audio_pipeline);
+            break;
+        case ACTION_MOUSE_BUTTON_TAP:
+            usb_hid_mouse_button_press(action->key_code);
+            vTaskDelay(pdMS_TO_TICKS(15));
+            usb_hid_mouse_button_release(action->key_code);
+            break;
+        case ACTION_MOUSE_BUTTON_HOLD:
+            usb_hid_mouse_button_press(action->key_code);
+            break;
+        case ACTION_MOUSE_BUTTON_RELEASE:
+            if (action->key_code) {
+                usb_hid_mouse_button_release(action->key_code);
+            } else {
+                usb_hid_mouse_buttons_release();
+            }
+            break;
+        case ACTION_MOUSE_MOVE:
+            usb_hid_mouse_move(action->mouse_dx, action->mouse_dy);
+            break;
+        case ACTION_MOUSE_WHEEL:
+            usb_hid_mouse_wheel(action->mouse_wheel);
             break;
         default:
             break;

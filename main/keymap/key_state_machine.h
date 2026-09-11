@@ -20,15 +20,23 @@ typedef enum {
     ACTION_VOICE_HOLD,          // Trigger voice recording + hold hotkey
     ACTION_VOICE_RELEASE,       // End voice recording + release hotkey
     ACTION_SWITCH_LAYER,        // Switch layer (auto-toggles to 0 if already active)
-    ACTION_TRANSPARENT          // Inherit from Layer 0
+    ACTION_TRANSPARENT,         // Inherit from Layer 0
+    ACTION_MOUSE_BUTTON_TAP,    // Tap a mouse button (down + up)
+    ACTION_MOUSE_BUTTON_HOLD,   // Press and hold a mouse button
+    ACTION_MOUSE_BUTTON_RELEASE,// Release mouse button(s)
+    ACTION_MOUSE_MOVE,          // Relative cursor move (dx, dy)
+    ACTION_MOUSE_WHEEL          // Relative wheel scroll
 } key_action_type_t;
 
 typedef struct {
     key_action_type_t type;
     uint8_t           modifier;
-    uint8_t           key_code;
+    uint8_t           key_code;      // Keyboard HID usage or mouse button mask
     uint16_t          consumer_code;
     uint8_t           target_layer;
+    int8_t            mouse_dx;      // Mouse move X delta
+    int8_t            mouse_dy;      // Mouse move Y delta
+    int8_t            mouse_wheel;   // Wheel delta
 } key_action_t;
 
 typedef struct {
@@ -55,6 +63,8 @@ typedef struct {
     bool     long_fired;
     uint32_t next_repeat_timestamp;
     bool     waiting_double;
+    bool     move_active;            // Continuous mouse movement while held
+    uint32_t next_move_timestamp;
 } key_slot_state_t;
 
 typedef struct {

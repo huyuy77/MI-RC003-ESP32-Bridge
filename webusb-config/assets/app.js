@@ -10,12 +10,13 @@
   "use strict";
 
   // WebUI version (independent of the firmware version). Bump on UI changes.
-  const WEBUI_VERSION = "1.0";
+  const WEBUI_VERSION = "1.2";
 
   const dev = new Mirc003();
   const ACTION = Mirc003.ACTION;
   const PHYSICAL_KEYS = Mirc003.PHYSICAL_KEYS;
   const MOD_BITS = Mirc003.MOD_BITS;
+  const MOUSE_BUTTONS = Mirc003.MOUSE_BUTTONS;
   const HID_GROUPS = Mirc003.HID_GROUPS;
   const CONSUMER_GROUPS = Mirc003.CONSUMER_GROUPS;
 
@@ -117,7 +118,8 @@
       $("st-uptime").textContent = formatUptime(s.uptime_sec || 0);
       $("st-ble").textContent = ["未连接", "扫描中", "连接中", "已连接", "语音中"][s.ble_state] || s.ble_state;
       $("st-battery").textContent = (typeof s.battery === "number" && s.battery >= 0) ? s.battery + "%" : "未知";
-      $("st-layer").textContent = "层 " + (s.active_layer ?? 0);
+      const activeMode = getLayer(s.active_layer ?? 0);
+      $("st-layer").textContent = activeMode ? configLabel(activeMode) : ("配置" + (s.active_layer ?? 0));
       $("st-frames").textContent = s.frames_decoded ?? 0;
       $("st-heap").textContent = formatBytes(s.free_heap);
       $("st-psram").textContent = formatBytes(s.free_psram);
@@ -219,6 +221,9 @@
         return;
       }
       toast("按键配置已保存");
+      if (dev.isConnected()) {
+        try { await dev.setLayer(activeLayer); } catch (e) { /* ignore */ }
+      }
       await loadKeymap();
     } catch (e) {
       console.error(e);
@@ -244,6 +249,17 @@
   function getLayer(idx) {
     return keymap && keymap.layers ? keymap.layers.find((l) => l.id === idx) : null;
   }
+  // Display label for a configuration slot. Normalizes legacy "层N" / "模式N"
+  // names to "配置N" and strips any stray leading/trailing whitespace.
+  function configLabel(layer) {
+    const raw = String((layer && layer.name) || "").trim();
+    if (!raw) return "配置" + (layer ? layer.id : 0);
+    return raw
+      .replace(/默认层/g, "默认配置")
+      .replace(/默认模式/g, "默认配置")
+      .replace(/^层\s*(\d+)$/, "配置$1")
+      .replace(/^模式\s*(\d+)$/, "配置$1");
+  }
   function getBinding(layer, vk) {
     if (!layer || !layer.bindings) return null;
     return layer.bindings.find((b) => b.source_vk === vk) || null;
@@ -261,12 +277,15 @@
     (keymap.layers || []).forEach((layer) => {
       const btn = document.createElement("button");
       btn.className = "layer-tab" + (layer.id === activeLayer ? " active" : "");
-      const color = layer.color || "#00ff00";
-      btn.innerHTML = `<span class="swatch" style="background:${color}"></span>${escapeHtml(layer.name || "层" + layer.id)}`;
+      btn.textContent = configLabel(layer);
       btn.onclick = () => {
         activeLayer = layer.id;
         renderLayerTabs();
         renderKeymapGrid();
+        // Selecting a configuration also makes it active on the device.
+        if (dev.isConnected()) {
+          dev.setLayer(layer.id).then(refreshStatus).catch(() => {});
+        }
       };
       host.appendChild(btn);
     });
@@ -281,7 +300,18 @@
     }
     if (type === 4) return `${text} (0x${(b[prefix + "_cons"] || 0).toString(16)})`;
     if (type === 7) return `${text} (0x${(b[prefix + "_mod"] || 0).toString(16)}, 0x${(b[prefix + "_key"] || 0).toString(16)})`;
-    if (type === 9) return `${text} → 层 ${b[prefix + "_layer"] ?? 0}`;
+    if (type === 9) return `${text} → 配置 ${b[prefix + "_layer"] ?? 0}`;
+    if (type === 11 || type === 12 || type === 13) {
+      const btn = MOUSE_BUTTONS.find(([v]) => v === (b[prefix + "_key"] || 0));
+      return `${text} (${btn ? btn[1] : "0x" + (b[prefix + "_key"] || 0).toString(16)})`;
+    }
+    if (type === 14) {
+      const dx = b[prefix + "_dx"] || 0, dy = b[prefix + "_dy"] || 0;
+      const dir = dx < 0 ? "左" : dx > 0 ? "右" : dy < 0 ? "上" : dy > 0 ? "下" : "—";
+      const spd = Math.max(Math.abs(dx), Math.abs(dy));
+      return `${text} (${dir}${spd ? " 速度" + spd : ""})`;
+    }
+    if (type === 15) return `${text} (${b[prefix + "_wheel"] || 0})`;
     return text;
   }
 
@@ -384,7 +414,7 @@
   let editingKey = null;
 
   function actionTypeOptions(selected) {
-    const allowed = [0, 1, 2, 4, 7, 9, 10];
+    const allowed = [0, 1, 2, 4, 7, 9, 10, 11, 12, 13, 14, 15];
     return allowed.map((t) => `<option value="${t}" ${t === selected ? "selected" : ""}>${ACTION[t]}</option>`).join("");
   }
 
@@ -395,6 +425,15 @@
     const key = b[prefix + "_key"] ?? 0;
     const cons = b[prefix + "_cons"] ?? 0;
     const layer = b[prefix + "_layer"] ?? 0;
+    const wheel = b[prefix + "_wheel"] ?? 0;
+    const mdx = b[prefix + "_dx"] ?? 0;
+    const mdy = b[prefix + "_dy"] ?? 0;
+    let moveDir = "up";
+    if (mdx < 0) moveDir = "left";
+    else if (mdx > 0) moveDir = "right";
+    else if (mdy < 0) moveDir = "up";
+    else if (mdy > 0) moveDir = "down";
+    const moveSpeed = Math.max(Math.abs(mdx), Math.abs(mdy)) || 8;
     const ms = b[prefix + "_ms"] ?? (prefix === "long" ? 600 : 250);
 
     const usageOptions = HID_GROUPS.map(([g, items]) =>
@@ -405,6 +444,8 @@
       `<optgroup label="${g}">` + items.map(([v, n]) =>
         `<option value="${v}" ${v === cons ? "selected" : ""}>${n}</option>`).join("") + `</optgroup>`
     ).join("");
+    const mouseButtonOptions = MOUSE_BUTTONS.map(([v, n]) =>
+      `<option value="${v}" ${v === key ? "selected" : ""}>${n}</option>`).join("");
     const modChecks = MOD_BITS.map(([bit, name]) =>
       `<label class="check"><input type="checkbox" class="f-mod" value="${bit}" ${(mod & bit) ? "checked" : ""}/>${name}</label>`
     ).join("");
@@ -432,7 +473,25 @@
           </div>
         </div>
         <div class="f-layer">
-          <div class="field"><label>目标层级 (1-4)</label><input type="number" class="f-layer" value="${layer}" min="0" max="4"/></div>
+          <div class="field"><label>目标配置 (1-4)</label><input type="number" class="f-layer" value="${layer}" min="0" max="4"/></div>
+        </div>
+        <div class="f-mouse">
+          <div class="field"><label>鼠标按键</label><select class="f-mousebtn">${mouseButtonOptions}</select></div>
+        </div>
+        <div class="f-move">
+          <div class="inline">
+            <div class="field"><label>移动方向</label><select class="f-move-dir">
+              <option value="up" ${moveDir === "up" ? "selected" : ""}>上</option>
+              <option value="down" ${moveDir === "down" ? "selected" : ""}>下</option>
+              <option value="left" ${moveDir === "left" ? "selected" : ""}>左</option>
+              <option value="right" ${moveDir === "right" ? "selected" : ""}>右</option>
+            </select></div>
+            <div class="field"><label>移动速度 (1-127)</label><input type="number" class="f-move-speed" value="${moveSpeed}" min="1" max="127"/></div>
+          </div>
+          <p class="hint">按住按键时按此方向持续移动，松开即停；速度越大移动越快。</p>
+        </div>
+        <div class="f-wheel">
+          <div class="field"><label>滚轮 (-127 ~ 127，正数向上)</label><input type="number" class="f-wheel" value="${wheel}" min="-127" max="127"/></div>
         </div>
       </div>`;
   }
@@ -445,6 +504,9 @@
       block.querySelector(".f-keyboard").style.display = (type === 1 || type === 2 || type === 7) ? "block" : "none";
       block.querySelector(".f-consumer").style.display = (type === 4) ? "block" : "none";
       block.querySelector(".f-layer").style.display = (type === 9) ? "block" : "none";
+      block.querySelector(".f-mouse").style.display = (type === 11 || type === 12 || type === 13) ? "block" : "none";
+      block.querySelector(".f-move").style.display = (type === 14) ? "block" : "none";
+      block.querySelector(".f-wheel").style.display = (type === 15) ? "block" : "none";
     });
   }
 
@@ -458,13 +520,26 @@
     const keySel = parseInt(block.querySelector(".f-key")?.value || "0", 10);
     const consNum = parseInt(block.querySelector(".f-consnum")?.value || "0", 10);
     const consSel = parseInt(block.querySelector(".f-cons")?.value || "0", 10);
+    const moveDir = block.querySelector(".f-move-dir")?.value || "up";
+    let moveSpeed = parseInt(block.querySelector(".f-move-speed")?.value || "8", 10);
+    if (!(moveSpeed >= 1)) moveSpeed = 8;
+    if (moveSpeed > 127) moveSpeed = 127;
+    let mdx = 0, mdy = 0;
+    if (moveDir === "up") mdy = -moveSpeed;
+    else if (moveDir === "down") mdy = moveSpeed;
+    else if (moveDir === "left") mdx = -moveSpeed;
+    else if (moveDir === "right") mdx = moveSpeed;
     return {
       has,
       type,
       mod,
       key: keyNum || keySel,
       cons: consNum || consSel,
-      layer: parseInt(block.querySelector(".f-layer")?.value || "0", 10),
+      layer: parseInt(block.querySelector("input.f-layer")?.value || "0", 10),
+      mouseBtn: parseInt(block.querySelector(".f-mousebtn")?.value || "0", 10),
+      dx: mdx,
+      dy: mdy,
+      wheel: parseInt(block.querySelector("input.f-wheel")?.value || "0", 10),
       ms: parseInt(block.querySelector(".f-ms")?.value || "0", 10),
     };
   }
@@ -473,7 +548,7 @@
     editingKey = pk;
     const layer = getLayer(activeLayer);
     const b = getBinding(layer, pk.vk) || { source_vk: pk.vk };
-    $("modal-title").textContent = `${pk.name} (层 ${activeLayer})`;
+    $("modal-title").textContent = `${pk.name} (配置 ${activeLayer})`;
     $("modal-body").innerHTML =
       renderActionFields("click", b) +
       renderActionFields("long", b) +
@@ -497,6 +572,15 @@
       const cfg = readActionFields(blocks[i]);
       b["has_" + prefix] = cfg.type !== 0;
       b[prefix + "_type"] = cfg.type;
+      // Clear every type-specific field so stale values (e.g. a leftover key
+      // code) never leak into the new action.
+      delete b[prefix + "_mod"];
+      delete b[prefix + "_key"];
+      delete b[prefix + "_cons"];
+      delete b[prefix + "_layer"];
+      delete b[prefix + "_dx"];
+      delete b[prefix + "_dy"];
+      delete b[prefix + "_wheel"];
       if (cfg.type === 1 || cfg.type === 2 || cfg.type === 7) {
         b[prefix + "_mod"] = cfg.mod;
         b[prefix + "_key"] = cfg.key;
@@ -504,14 +588,17 @@
         b[prefix + "_cons"] = cfg.cons;
       } else if (cfg.type === 9) {
         b[prefix + "_layer"] = cfg.layer;
+      } else if (cfg.type === 11 || cfg.type === 12 || cfg.type === 13) {
+        b[prefix + "_key"] = cfg.mouseBtn;
+      } else if (cfg.type === 14) {
+        b[prefix + "_dx"] = cfg.dx;
+        b[prefix + "_dy"] = cfg.dy;
+      } else if (cfg.type === 15) {
+        b[prefix + "_wheel"] = cfg.wheel;
       }
       if (prefix !== "click") b[prefix + "_ms"] = cfg.ms;
       if (!b["has_" + prefix]) {
         delete b[prefix + "_type"];
-        delete b[prefix + "_mod"];
-        delete b[prefix + "_key"];
-        delete b[prefix + "_cons"];
-        delete b[prefix + "_layer"];
       }
     });
     const repBlock = blocks[3];
@@ -522,12 +609,18 @@
       b.repeat_mod = b.click_mod || 0;
       b.repeat_key = b.click_key || 0;
       b.repeat_cons = b.click_cons || 0;
+      b.repeat_dx = b.click_dx || 0;
+      b.repeat_dy = b.click_dy || 0;
+      b.repeat_wheel = b.click_wheel || 0;
       b.repeat_delay_ms = parseInt($("rep-delay").value, 10);
       b.repeat_interval_ms = parseInt($("rep-interval").value, 10);
     } else {
       delete b.has_repeat;
       delete b.repeat_type;
       delete b.repeat_cons;
+      delete b.repeat_dx;
+      delete b.repeat_dy;
+      delete b.repeat_wheel;
     }
     layer.bindings = layer.bindings.filter((x) => x.has_click || x.has_long || x.has_double);
     $("modal").classList.add("hidden");
@@ -584,6 +677,13 @@
     $("btn-keymap-refresh").onclick = loadKeymap;
     $("btn-keymap-save").onclick = saveKeymap;
     $("btn-keymap-reset").onclick = resetKeymap;
+    $("btn-keymap-activate").onclick = async () => {
+      try {
+        await dev.setLayer(activeLayer);
+        toast("已切换为配置 " + activeLayer);
+        await refreshStatus();
+      } catch (e) { toast(e.message, true); }
+    };
     $("btn-ble-scan").onclick = scanBle;
     $("btn-ble-info").onclick = refreshBleInfo;
     $("btn-ble-unpair").onclick = async () => {

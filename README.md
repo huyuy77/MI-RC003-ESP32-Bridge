@@ -19,7 +19,7 @@ USB 复合设备转发到 Windows，并使用 **浏览器 WebUSB** 完成设备�
 | USB 协议栈 | Arduino TinyUSB | **esp_tinyusb (TinyUSB)** |
 | 配置方式 | Wi-Fi AP 热点 + 内置 HTTP 网页 | **浏览器 WebUSB 直连配置（无热点、无 IP）** |
 | 配置页面 | 固件内嵌 145KB HTML | **独立静态站点 `webusb-config/`，可部署到任意 HTTPS 站点** |
-| 按键映射 | 5 层 / 单击·长按·双击 | 保留并移植 |
+| 按键配置 | 5 个配置方案 / 单击·长按·双击 | 保留并移植 |
 | 语音麦克风 | UAC 1.0 + IMA-ADPCM | 保留并移植 |
 
 ### 它解决了什么
@@ -52,19 +52,17 @@ USB 复合设备转发到 Windows，并使用 **浏览器 WebUSB** 完成设备�
                                                      └────────────────────────┘
 ```
 
-USB 复合设备包含 6 个接口：
+USB 复合设备包含 4 个接口：
 
 | 接口 | 类 | 端点 | 说明 |
 | :--- | :--- | :--- | :--- |
 | 0 / 1 | Audio (UAC 1.0) | ISO IN `0x81` | 16 kHz / 16-bit / 单声道麦克风 |
-| 2 | HID | INT IN `0x82` | 键盘（Report ID 1）+ 多媒体（Report ID 2） |
-| 3 / 4 | CDC (ACM) | INT IN `0x83` / BULK OUT `0x03` / BULK IN `0x84` | **调试串口**（同一根 USB 线即可查看日志） |
-| 5 | Vendor (WebUSB) | BULK OUT `0x04` / BULK IN `0x85` | WebUSB 配置通道 |
+| 2 | HID | INT IN `0x82` | 键盘（Report ID 1）+ 多媒体（Report ID 2）+ 鼠标（Report ID 3） |
+| 3 | Vendor (WebUSB) | BULK OUT `0x05` / BULK IN `0x83` | WebUSB 配置通道 |
 
 > **烧录与调试**
 > * 复合设备占用的是 ESP32-S3 的**原生 USB（GPIO19/20，OTG）**口，运行时它同时提供
->   麦克风、键盘、调试串口和 WebUSB。
-> * 运行时可在设备管理器中看到 `MIRC003 Console` 串口，直接用串口助手（115200）查看日志。
+>   麦克风、键盘和 WebUSB。
 > * 若要通过该 USB 口**烧录固件**：按住开发板 `BOOT` 键，点按一下 `RST`，松开 `BOOT`，
 >   芯片会进入 ROM 的 USB-Serial-JTAG 引导模式，然后执行 `idf.py -p COMx flash` 即可。
 > * 也可继续使用板载 UART 口（GPIO43/44）烧录与查看日志，二者互不影响。
@@ -154,7 +152,7 @@ python -m http.server 8000
 * Windows 10/11 会自动为带 BOS 描述的厂商接口绑定 WinUSB，**无需 Zadig**。
 * Linux 需要 udev 规则允许普通用户访问该设备。
 
-配置页面包含：设备状态、按键映射（5 层可视化编辑）、蓝牙配对、运行日志、系统设置
+配置页面包含：设备状态、按键配置（5 个配置方案可视化编辑）、蓝牙配对、运行日志、系统设置
 与原始 JSON 导入导出。
 
 ---
@@ -181,9 +179,10 @@ python -m http.server 8000
 
 | cmd | 名称 | 说明 |
 | :--- | :--- | :--- |
-| `0x01` | STATUS | 运行状态 / 内存 / BLE 状态 / 当前层 |
+| `0x01` | STATUS | 运行状态 / 内存 / BLE 状态 / 当前配置 |
 | `0x02` `0x03` | LOGS_GET / CLEAR | 运行日志 |
-| `0x10` `0x11` `0x12` `0x13` | KEYMAP_GET / SAVE / RESET / TELEMETRY | 多层级按键映射 |
+| `0x10` `0x11` `0x12` `0x13` | KEYMAP_GET / SAVE / RESET / TELEMETRY | 多配置方案按键映射 |
+| `0x18` | SET_LAYER | 切换设备当前配置（层） |
 | `0x20` `0x21` `0x22` `0x23` `0x24` | BLE_SCAN / CONNECT / UNPAIR / INFO / RECONNECT | 蓝牙配对管理 |
 | `0x31` | NVS_RESET | 恢复出厂设置 |
 | `0x40` | SYSTEM_RESTART | 重启设备 |
@@ -205,7 +204,9 @@ python -m http.server 8000
 | 音量 +/− | `0x80/0x81` | 音量调节（支持连发） | — | — |
 | 电视键 | `0xC0` | `F8` | — | — |
 
-所有映射均可在配置站点中自由修改；支持 5 个层级与单击/长按/双击/连发。
+所有映射均可在配置站点中自由修改；支持 5 个配置方案与单击/长按/双击/连发，动作类型可选
+键盘、多媒体，以及**鼠标按键（左/右/中/后退/前进）与鼠标移动/滚轮**。鼠标移动可选上/下/左/右
+方向并设置速度，按住持续移动，松开即停。
 
 > 说明：RC003 的 HOGP 输入报文是「Report ID 1 + 3 个小端 16-bit 键盘 usage」。
 > 固件会将其解析并归一化为上表的内部键码（例如 HID usage `0x4A/0x65/0x35` 分别
@@ -225,7 +226,7 @@ MIRC003-bridge-esp32/
 │   ├── app_config.h / version.h
 │   ├── ble/ble_remote_client.*    # NimBLE Central: HOGP + ATVV
 │   ├── audio/                     # IMA-ADPCM / AGC / 滤波 / 环形缓冲
-│   ├── keymap/                    # 5 层按键状态机 + NVS 配置
+│   ├── keymap/                    # 5 配置方案按键状态机 + NVS 配置
 │   ├── storage/config_store.*     # NVS 封装
 │   ├── usb/
 │   │   ├── usb_descriptors.*      # 设备/配置/BOS/WebUSB/HID 描述符
@@ -250,7 +251,7 @@ MIRC003-bridge-esp32/
 本固件在 BOS 描述符中同时提供了 **WebUSB** 与 **Microsoft OS 2.0（WINUSB 兼容 ID）**
 描述符，Windows 10/11 应自动为该厂商接口加载 `winusb.sys`。若仍出现代码 28：
 
-1. 确认烧录的是最新固件（PID 已从 `0x8301` 改为 `0x8302`，以强制 Windows 重新识别）。
+1. 确认烧录的是最新固件（PID 已从 `0x8303` 改为 `0x8304`，以强制 Windows 重新识别）。
 2. 打开「设备管理器」，卸载残留的旧设备（`VID_303A&PID_8301`）后「扫描检测硬件改动」。
 3. 设备应出现在「通用串行总线设备 / WinUsb Device」下，而不是「其他设备」。
 4. 无需 Zadig；Chrome / Edge 桌面版即可通过 WebUSB 访问。
@@ -270,7 +271,7 @@ MIRC003-bridge-esp32/
 
 ### 修改按键映射后页面无响应 / 不生效
 
-已修复：WebUSB 单帧上限提升到 32 KB，按键配置改为**按层二进制存储**到 NVS
+已修复：WebUSB 单帧上限提升到 32 KB，按键配置改为**按配置二进制存储**到 NVS
 （NVS 单个值上限约 4 KB，之前的整段 JSON 会超限），并在应用配置时对按键引擎加锁。
 配置过程与结果会打印到串口：
 

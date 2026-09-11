@@ -144,6 +144,36 @@ size_t webusb_protocol_handle(uint8_t cmd, const uint8_t *payload, size_t payloa
             return ok(resp, resp_cap, "{\"status\":\"saved\"}");
         }
 
+        case CMD_SET_LAYER: {
+            if (!payload || payload_len == 0) {
+                *status = WEBUSB_ERR_ARG;
+                return ok(resp, resp_cap, "{\"error\":\"missing_body\"}");
+            }
+            char *json = (char *)heap_caps_malloc(payload_len + 1, MALLOC_CAP_SPIRAM);
+            if (!json) {
+                *status = WEBUSB_ERR_INTERNAL;
+                return ok(resp, resp_cap, "{\"error\":\"no_mem\"}");
+            }
+            memcpy(json, payload, payload_len);
+            json[payload_len] = '\0';
+            JsonDocument doc;
+            DeserializationError err = deserializeJson(doc, json);
+            heap_caps_free(json);
+            if (err) {
+                *status = WEBUSB_ERR_ARG;
+                return ok(resp, resp_cap, "{\"error\":\"invalid_json\"}");
+            }
+            uint8_t layer = doc["layer"] | 0;
+            if (layer >= MAX_LAYERS) {
+                *status = WEBUSB_ERR_ARG;
+                return ok(resp, resp_cap, "{\"error\":\"bad_layer\"}");
+            }
+            key_engine_lock();
+            key_engine_switch_layer(&g_key_engine, layer, (uint32_t)(esp_timer_get_time() / 1000));
+            key_engine_unlock();
+            return ok(resp, resp_cap, "{\"status\":\"ok\"}");
+        }
+
         case CMD_KEYMAP_SAVE: {
             if (!payload || payload_len == 0) {
                 *status = WEBUSB_ERR_ARG;

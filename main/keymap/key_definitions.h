@@ -78,6 +78,15 @@ extern "C" {
 #define USB_CONSUMER_AC_HOME        0x0223
 #define USB_CONSUMER_AC_BACK        0x0224
 
+// ==========================================
+// 5. USB HID Mouse Button Bitmasks
+// ==========================================
+#define USB_MOUSE_BTN_LEFT      0x01    // Left button
+#define USB_MOUSE_BTN_RIGHT     0x02    // Right button
+#define USB_MOUSE_BTN_MIDDLE    0x04    // Middle button
+#define USB_MOUSE_BTN_BACK      0x08    // Back (side button)
+#define USB_MOUSE_BTN_FORWARD   0x10    // Forward (side button)
+
 #ifdef __cplusplus
 }
 #endif

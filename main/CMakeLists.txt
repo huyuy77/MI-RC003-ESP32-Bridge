@@ -16,7 +16,6 @@ idf_component_register(
         "usb/usb_composite.c"
         "usb/uac_microphone.c"
         "usb/hid_bridge.c"
-        "usb/usb_serial.c"
         "usb/webusb_transport.c"
         "webusb/webusb_protocol.cpp"
     INCLUDE_DIRS

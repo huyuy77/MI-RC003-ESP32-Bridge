@@ -6,7 +6,6 @@
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
-#include "usb_serial.h"
 
 #define LOG_LINES        128
 #define LOG_LINE_MAX_LEN 128
@@ -40,11 +39,6 @@ void app_log(const char *tag, const char *format, ...)
 
     // Console output (kept at INFO so it is visible with default log level).
     ESP_LOGI(tag, "%s", msg);
-
-    // Also mirror to the USB CDC debug console.
-    char cdc_line[LOG_LINE_MAX_LEN + 2];
-    snprintf(cdc_line, sizeof(cdc_line), "%s\r\n", line);
-    usb_serial_write(cdc_line);
 
     portENTER_CRITICAL(&s_log_mux);
     strncpy(s_log_lines[s_log_head], line, LOG_LINE_MAX_LEN - 1);

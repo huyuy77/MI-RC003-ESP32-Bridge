@@ -20,6 +20,7 @@ enum {
     CMD_KEYMAP_BEGIN     = 0x15,
     CMD_KEYMAP_DATA      = 0x16,
     CMD_KEYMAP_COMMIT    = 0x17,
+    CMD_SET_LAYER        = 0x18,
     CMD_BLE_SCAN         = 0x20,
     CMD_BLE_CONNECT      = 0x21,
     CMD_BLE_UNPAIR       = 0x22,

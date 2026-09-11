@@ -16,7 +16,7 @@
   "use strict";
 
   var DEFAULT_VID = 0x303a;
-  var DEFAULT_PID = 0x8302;
+  var DEFAULT_PID = 0x8304;
 
   // ---- WebUSB framing -----------------------------------------------------
   var SOF0 = 0x4d; // 'M'
@@ -37,6 +37,7 @@
     KEYMAP_BEGIN: 0x15,
     KEYMAP_DATA: 0x16,
     KEYMAP_COMMIT: 0x17,
+    SET_LAYER: 0x18,
     BLE_SCAN: 0x20,
     BLE_CONNECT: 0x21,
     BLE_UNPAIR: 0x22,
@@ -57,8 +58,13 @@
     6: "多媒体-释放",
     7: "语音",
     8: "语音释放",
-    9: "切换层级",
+    9: "切换配置",
     10: "穿透继承",
+    11: "鼠标按键-单击",
+    12: "鼠标按键-按住",
+    13: "鼠标按键-释放",
+    14: "鼠标移动",
+    15: "鼠标滚轮",
   };
 
   // ---- Physical remote keys (canonical source_vk values) ------------------
@@ -76,6 +82,11 @@
     { vk: 0x80, name: "音量+" },
     { vk: 0x81, name: "音量-" },
     { vk: 0xc0, name: "电视键" },
+  ];
+
+  // ---- Mouse button bitmasks ----------------------------------------------
+  var MOUSE_BUTTONS = [
+    [0x01, "左键"], [0x02, "右键"], [0x04, "中键"], [0x08, "后退键"], [0x10, "前进键"],
   ];
 
   // ---- Modifier bitmasks --------------------------------------------------
@@ -105,7 +116,7 @@
 
   /**
    * Create a client. Options (all optional):
-   *   vendorId, productId  - USB IDs to match (defaults 0x303a / 0x8302)
+   *   vendorId, productId  - USB IDs to match (defaults 0x303a / 0x8304)
    *   saveChunk            - bytes per KEYMAP_DATA chunk (default 64)
    */
   function Mirc003(options) {
@@ -302,6 +313,11 @@
   Mirc003.prototype.getKeymap = function () { return this.send(CMD.KEYMAP_GET); };
   Mirc003.prototype.resetKeymap = function () { return this.send(CMD.KEYMAP_RESET); };
 
+  /** Switch the device's active configuration (layer) by index. */
+  Mirc003.prototype.setLayer = function (layer) {
+    return this.send(CMD.SET_LAYER, { layer: layer });
+  };
+
   /** Persist a keymap object (the same shape returned by getKeymap()). */
   Mirc003.prototype.saveKeymap = function (keymap) {
     var self = this;
@@ -335,6 +351,7 @@
   Mirc003.ACTION = ACTION;
   Mirc003.PHYSICAL_KEYS = PHYSICAL_KEYS;
   Mirc003.MOD_BITS = MOD_BITS;
+  Mirc003.MOUSE_BUTTONS = MOUSE_BUTTONS;
   Mirc003.HID_GROUPS = HID_GROUPS;
   Mirc003.CONSUMER_GROUPS = CONSUMER_GROUPS;
 

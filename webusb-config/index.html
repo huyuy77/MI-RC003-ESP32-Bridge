@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="theme-color" content="#fbfbfd" />
   <title>MIRC003 Bridge - WebUSB 配置中心</title>
-  <link rel="stylesheet" href="assets/style.css?v=19" />
+  <link rel="stylesheet" href="assets/style.css?v=20" />
 </head>
 <body>
   <header class="topbar">
@@ -31,7 +31,7 @@
 
     <nav class="tabs">
       <button class="tab active" data-tab="status">设备状态</button>
-      <button class="tab" data-tab="keymap">按键映射</button>
+      <button class="tab" data-tab="keymap">按键配置</button>
       <button class="tab" data-tab="ble">蓝牙配对</button>
       <button class="tab" data-tab="logs">运行日志</button>
       <button class="tab" data-tab="system">系统设置</button>
@@ -46,7 +46,7 @@
         <div class="card stat"><span class="label">运行时间</span><span id="st-uptime" class="value">-</span></div>
         <div class="card stat"><span class="label">BLE 状态</span><span id="st-ble" class="value">-</span></div>
         <div class="card stat"><span class="label">遥控器电量</span><span id="st-battery" class="value">-</span></div>
-        <div class="card stat"><span class="label">当前层级</span><span id="st-layer" class="value">-</span></div>
+        <div class="card stat"><span class="label">当前配置</span><span id="st-layer" class="value">-</span></div>
         <div class="card stat"><span class="label">音频帧</span><span id="st-frames" class="value">-</span></div>
         <div class="card stat"><span class="label">空闲内存</span><span id="st-heap" class="value">-</span></div>
         <div class="card stat"><span class="label">PSRAM</span><span id="st-psram" class="value">-</span></div>
@@ -64,19 +64,20 @@
       </div>
     </section>
 
-    <!-- ================= 按键映射 ================= -->
+    <!-- ================= 按键配置 ================= -->
     <section class="panel" id="panel-keymap">
       <div class="card">
         <div class="card-head">
-          <h3>配置层级</h3>
+          <h3>配置方案</h3>
           <div class="row">
+            <button id="btn-keymap-activate" class="btn small">设为当前配置</button>
             <button id="btn-keymap-refresh" class="btn small">读取</button>
             <button id="btn-keymap-save" class="btn small primary">保存到设备</button>
             <button id="btn-keymap-reset" class="btn small danger">恢复出厂</button>
           </div>
         </div>
         <div id="layer-tabs" class="layer-tabs"></div>
-        <p class="hint">点击遥控器上的按键进行单击 / 长按 / 双击行为配置。非默认层未配置的按键会自动继承默认层（穿透）。</p>
+        <p class="hint">各配置方案的按键映射相互独立：只有在当前配置里设置过的按键才会生效。若想让某个手势沿用默认配置，把该动作设为「穿透继承」。</p>
       </div>
       <div id="keymap-grid" class="keymap-grid"></div>
       <p class="remote-info" id="remote-info">将鼠标移到按键上查看映射</p>
@@ -141,7 +142,7 @@
       </div>
       <div class="card">
         <h3>原始配置 (JSON)</h3>
-        <p class="hint">可在此直接导入 / 导出完整多层级配置。</p>
+        <p class="hint">可在此直接导入 / 导出完整多配置方案。</p>
         <textarea id="raw-json" class="raw" spellcheck="false"></textarea>
         <div class="row">
           <button id="btn-json-load" class="btn small">从设备读取</button>
@@ -168,7 +169,7 @@
 
   <div id="toast" class="toast hidden"></div>
 
-  <script src="assets/mirc003.js?v=2"></script>
-  <script src="assets/app.js?v=26"></script>
+  <script src="assets/mirc003.js?v=5"></script>
+  <script src="assets/app.js?v=35"></script>
 </body>
 </html>

@@ -2,7 +2,6 @@
 #include "usb_descriptors.h"
 #include "uac_microphone.h"
 #include "hid_bridge.h"
-#include "usb_serial.h"
 #include "webusb_transport.h"
 #include "app_config.h"
 #include "app_log.h"
@@ -31,6 +30,7 @@ static void usb_event_cb(tinyusb_event_t *event, void *arg)
             app_log("USB", "Host suspended the bus (PC sleep)");
             usb_hid_keyboard_release();
             usb_hid_consumer_release();
+            usb_hid_mouse_buttons_release();
             break;
 #endif
 #ifdef CONFIG_TINYUSB_RESUME_CALLBACK
@@ -47,11 +47,13 @@ bool usb_composite_init(void)
 {
     hid_bridge_init();
     webusb_transport_init();
-    usb_serial_init();
     uac_microphone_init();
     usb_descriptors_init();
 
     tinyusb_config_t cfg = TINYUSB_DEFAULT_CONFIG(usb_event_cb, NULL);
+    // WebUSB keymap JSON parsing runs in the TinyUSB task context; the default
+    // 4 KB stack is not enough for a full multi-layer keymap.
+    cfg.task.size = 10240;
     cfg.descriptor.device = &usb_device_descriptor;
     cfg.descriptor.string = usb_string_descriptors;
     cfg.descriptor.string_count = usb_string_descriptor_count;

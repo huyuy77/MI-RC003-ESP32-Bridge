@@ -1,6 +1,6 @@
 # MIRC003 Bridge · WebUI JavaScript API
 
-> **WebUI 版本**：`1.0`（见 `assets/app.js` 顶部的 `WEBUI_VERSION`，独立于固件版本，仅 UI 变更时递增）。页面右上角标题栏会显示 `WebUI v1.0`。
+> **WebUI 版本**：`1.2`（见 `assets/app.js` 顶部的 `WEBUI_VERSION`，独立于固件版本，仅 UI 变更时递增）。页面右上角标题栏会显示 `WebUI v1.2`。
 
 `assets/mirc003.js` 是一个无依赖的浏览器端库，封装了与 MIRC003 Bridge 固件之间的
 WebUSB 通信协议。第三方可以**只写自己的 HTML/JS**，引入该库后调用其 API，
@@ -55,6 +55,7 @@ WebUSB 通信协议。第三方可以**只写自己的 HTML/JS**，引入该库�
 | `KEYMAP_BEGIN` | `0x15` | 分块上传开始 |
 | `KEYMAP_DATA` | `0x16` | 分块上传数据 |
 | `KEYMAP_COMMIT` | `0x17` | 分块上传提交 |
+| `SET_LAYER` | `0x18` | 切换设备当前配置（层） |
 | `BLE_SCAN` | `0x20` | 扫描蓝牙 |
 | `BLE_CONNECT` | `0x21` | 连接指定设备 |
 | `BLE_UNPAIR` | `0x22` | 解除绑定 |
@@ -68,7 +69,9 @@ WebUSB 通信协议。第三方可以**只写自己的 HTML/JS**，引入该库�
 ```js
 { 0:"无", 1:"键盘-单击", 2:"键盘-按住", 3:"键盘-释放",
   4:"多媒体-单击", 5:"多媒体-按住", 6:"多媒体-释放",
-  7:"语音", 8:"语音释放", 9:"切换层级", 10:"穿透继承" }
+  7:"语音", 8:"语音释放", 9:"切换配置", 10:"穿透继承",
+  11:"鼠标按键-单击", 12:"鼠标按键-按住", 13:"鼠标按键-释放",
+  14:"鼠标移动", 15:"鼠标滚轮" }
 ```
 
 ### `Mirc003.PHYSICAL_KEYS` — 遥控器物理按键
@@ -78,6 +81,14 @@ WebUSB 通信协议。第三方可以**只写自己的 HTML/JS**，引入该库�
 ```
 
 `vk` 为绑定中的 `source_vk`（内部规范化键码）。
+
+### `Mirc003.MOUSE_BUTTONS` — 鼠标按键位
+
+```js
+[ [0x01,"左键"], [0x02,"右键"], [0x04,"中键"], [0x08,"后退键"], [0x10,"前进键"] ]
+```
+
+用于鼠标按键类动作的 `*_key`（按钮位掩码）。
 
 ### `Mirc003.MOD_BITS` — 键盘修饰键位
 
@@ -108,7 +119,7 @@ const dev = new Mirc003(options);
 | 选项 | 类型 | 默认 | 说明 |
 | :--- | :--- | :--- | :--- |
 | `vendorId` | number | `0x303A` | 匹配的 USB VID |
-| `productId` | number | `0x8302` | 匹配的 USB PID |
+| `productId` | number | `0x8304` | 匹配的 USB PID |
 | `saveChunk` | number | `64` | 保存时每个分块字节数 |
 
 ### 连接
@@ -145,9 +156,10 @@ dev.off("disconnect", handler);
 
 | 方法 | 返回 | 说明 |
 | :--- | :--- | :--- |
-| `getKeymap()` | `Promise<Keymap>` | 读取完整多层配置 |
+| `getKeymap()` | `Promise<Keymap>` | 读取完整多配置方案 |
 | `saveKeymap(keymap)` | `Promise<object>` | 保存（内部走 `KEYMAP_BEGIN/DATA/COMMIT` 分块上传） |
 | `resetKeymap()` | `Promise<object>` | 恢复出厂按键 |
+| `setLayer(layer)` | `Promise<object>` | 切换设备当前配置（层索引 0-4） |
 
 `Keymap` 结构见第 4 节。
 
@@ -191,10 +203,10 @@ dev.send(cmd, payloadObj?, rawBytes?)
   "layers": [
     {
       "id": 0,                 // 0..4
-      "name": "默认层",
+      "name": "默认配置",
       "type": 0,               // 0=永久 1=一次性 2=超时
       "timeout": 15,           // type=2 时的超时秒数
-      "color": "0x00FF00",     // 该层指示灯颜色 RGB
+      "color": "0x00FF00",     // 该配置指示灯颜色 RGB
       "bindings": [
         {
           "source_vk": 40,     // 物理键码（见 PHYSICAL_KEYS）
@@ -203,7 +215,7 @@ dev.send(cmd, payloadObj?, rawBytes?)
           "click_mod": 64,     // 修饰键位（键盘动作）
           "click_key": 54,     // HID 键码（键盘动作）
           "click_cons": 233,   // 多媒体码（多媒体动作）
-          "click_layer": 2,    // 目标层（切换层级动作）
+          "click_layer": 2,    // 目标配置（切换配置动作）
           "has_long": true, "long_ms": 600, "long_type": 4, "long_cons": 205,
           "has_double": false, "double_ms": 250, "double_type": 1, "double_key": 44,
           "has_repeat": true, "repeat_type": 4, "repeat_cons": 233,
@@ -222,11 +234,14 @@ dev.send(cmd, payloadObj?, rawBytes?)
   - `_type`：动作类型（见 `ACTION`）。
   - `_mod` / `_key`：键盘修饰键与 HID 键码（键盘类动作）。
   - `_cons`：USB Consumer 多媒体码（多媒体类动作）。
-  - `_layer`：目标层（切换层级动作）。
+  - `_layer`：目标配置（切换配置动作）。
+  - `_key`：鼠标按键位掩码（鼠标按键类动作，见 `MOUSE_BUTTONS`）。
+  - `_dx` / `_dy`：相对移动量（鼠标移动动作，`-127`~`127`；UI 以「方向 + 速度」配置，按住按键时持续移动，松开停止）。
+  - `_wheel`：滚轮量（鼠标滚轮动作，`-127`~`127`，正数向上）。
   - `_ms`：长按/双击判定时间（仅 long/double）。
 - `has_repeat`：连发（音量键常用）；`repeat_*` 同前缀规则。
-- `type=10`（穿透继承）：该动作沿用默认层的设置。
-- 非默认层未配置的按键自动继承默认层。
+- `type=10`（穿透继承）：该动作沿用默认配置的设置。
+- 各配置方案相互独立：只有在该配置里设置过的按键才会生效；未设置的手势不会继承默认配置，除非显式设为 `type=10`。
 
 ---
 

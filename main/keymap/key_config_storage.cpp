@@ -56,6 +56,24 @@ static uint32_t parse_u32_or_hex(JsonVariant v, uint32_t default_val = 0)
     return default_val;
 }
 
+// Signed variant: ArduinoJson's as<uint32_t>() returns 0 for negative values,
+// which would silently drop mouse deltas (left / up / scroll-up).
+static int32_t parse_i32(JsonVariant v, int32_t default_val = 0)
+{
+    if (v.isNull()) return default_val;
+    if (v.is<int>() || v.is<long>()) {
+        return (int32_t)v.as<long>();
+    }
+    if (v.is<unsigned int>() || v.is<unsigned long>()) {
+        return (int32_t)v.as<unsigned long>();
+    }
+    if (v.is<const char *>() || v.is<std::string>()) {
+        std::string s = v.as<std::string>();
+        return (int32_t)strtol(s.c_str(), NULL, 0);
+    }
+    return default_val;
+}
+
 static void parse_bindings_array(JsonArray arr, key_layer_t *layer)
 {
     if (!layer || arr.isNull()) return;
@@ -74,6 +92,9 @@ static void parse_bindings_array(JsonArray arr, key_layer_t *layer)
         b.click_action.key_code = (uint8_t)parse_u32_or_hex(obj["click_key"], 0);
         b.click_action.consumer_code = (uint16_t)parse_u32_or_hex(obj["click_cons"], 0);
         b.click_action.target_layer = (uint8_t)parse_u32_or_hex(obj["click_layer"], 0);
+        b.click_action.mouse_dx = (int8_t)parse_i32(obj["click_dx"], 0);
+        b.click_action.mouse_dy = (int8_t)parse_i32(obj["click_dy"], 0);
+        b.click_action.mouse_wheel = (int8_t)parse_i32(obj["click_wheel"], 0);
 
         // Normalize HID voice usage (0x3E) to the canonical voice code (0x04).
         if (b.source_vk == MI_KEY_VOICE_ALT) {
@@ -93,6 +114,9 @@ static void parse_bindings_array(JsonArray arr, key_layer_t *layer)
         b.long_action.key_code = (uint8_t)parse_u32_or_hex(obj["long_key"], 0);
         b.long_action.consumer_code = (uint16_t)parse_u32_or_hex(obj["long_cons"], 0);
         b.long_action.target_layer = (uint8_t)parse_u32_or_hex(obj["long_layer"], 0);
+        b.long_action.mouse_dx = (int8_t)parse_i32(obj["long_dx"], 0);
+        b.long_action.mouse_dy = (int8_t)parse_i32(obj["long_dy"], 0);
+        b.long_action.mouse_wheel = (int8_t)parse_i32(obj["long_wheel"], 0);
 
         b.has_double = obj["has_double"] | false;
         b.double_ms = parse_u32_or_hex(obj["double_ms"], 250);
@@ -101,12 +125,18 @@ static void parse_bindings_array(JsonArray arr, key_layer_t *layer)
         b.double_action.key_code = (uint8_t)parse_u32_or_hex(obj["double_key"], 0);
         b.double_action.consumer_code = (uint16_t)parse_u32_or_hex(obj["double_cons"], 0);
         b.double_action.target_layer = (uint8_t)parse_u32_or_hex(obj["double_layer"], 0);
+        b.double_action.mouse_dx = (int8_t)parse_i32(obj["double_dx"], 0);
+        b.double_action.mouse_dy = (int8_t)parse_i32(obj["double_dy"], 0);
+        b.double_action.mouse_wheel = (int8_t)parse_i32(obj["double_wheel"], 0);
 
         b.has_repeat = obj["has_repeat"] | false;
         b.repeat_action.type = (key_action_type_t)parse_u32_or_hex(obj["repeat_type"], 0);
         b.repeat_action.modifier = (uint8_t)parse_u32_or_hex(obj["repeat_mod"], 0);
         b.repeat_action.key_code = (uint8_t)parse_u32_or_hex(obj["repeat_key"], 0);
         b.repeat_action.consumer_code = (uint16_t)parse_u32_or_hex(obj["repeat_cons"], 0);
+        b.repeat_action.mouse_dx = (int8_t)parse_i32(obj["repeat_dx"], 0);
+        b.repeat_action.mouse_dy = (int8_t)parse_i32(obj["repeat_dy"], 0);
+        b.repeat_action.mouse_wheel = (int8_t)parse_i32(obj["repeat_wheel"], 0);
         b.repeat_delay_ms = (uint16_t)parse_u32_or_hex(obj["repeat_delay_ms"], 350);
         b.repeat_interval_ms = (uint16_t)parse_u32_or_hex(obj["repeat_interval_ms"], 70);
 
@@ -149,6 +179,9 @@ size_t key_config_to_json(const key_mapper_engine_t *engine, char *out, size_t o
                 if (b->click_action.key_code != 0) obj["click_key"] = b->click_action.key_code;
                 if (b->click_action.consumer_code != 0) obj["click_cons"] = b->click_action.consumer_code;
                 if (b->click_action.type == ACTION_SWITCH_LAYER) obj["click_layer"] = b->click_action.target_layer;
+                if (b->click_action.mouse_dx != 0) obj["click_dx"] = b->click_action.mouse_dx;
+                if (b->click_action.mouse_dy != 0) obj["click_dy"] = b->click_action.mouse_dy;
+                if (b->click_action.mouse_wheel != 0) obj["click_wheel"] = b->click_action.mouse_wheel;
             }
             if (b->has_long) {
                 obj["has_long"] = true;
@@ -158,6 +191,9 @@ size_t key_config_to_json(const key_mapper_engine_t *engine, char *out, size_t o
                 if (b->long_action.key_code != 0) obj["long_key"] = b->long_action.key_code;
                 if (b->long_action.consumer_code != 0) obj["long_cons"] = b->long_action.consumer_code;
                 if (b->long_action.type == ACTION_SWITCH_LAYER) obj["long_layer"] = b->long_action.target_layer;
+                if (b->long_action.mouse_dx != 0) obj["long_dx"] = b->long_action.mouse_dx;
+                if (b->long_action.mouse_dy != 0) obj["long_dy"] = b->long_action.mouse_dy;
+                if (b->long_action.mouse_wheel != 0) obj["long_wheel"] = b->long_action.mouse_wheel;
             }
             if (b->has_double) {
                 obj["has_double"] = true;
@@ -167,6 +203,9 @@ size_t key_config_to_json(const key_mapper_engine_t *engine, char *out, size_t o
                 if (b->double_action.key_code != 0) obj["double_key"] = b->double_action.key_code;
                 if (b->double_action.consumer_code != 0) obj["double_cons"] = b->double_action.consumer_code;
                 if (b->double_action.type == ACTION_SWITCH_LAYER) obj["double_layer"] = b->double_action.target_layer;
+                if (b->double_action.mouse_dx != 0) obj["double_dx"] = b->double_action.mouse_dx;
+                if (b->double_action.mouse_dy != 0) obj["double_dy"] = b->double_action.mouse_dy;
+                if (b->double_action.mouse_wheel != 0) obj["double_wheel"] = b->double_action.mouse_wheel;
             }
             if (b->has_repeat) {
                 obj["has_repeat"] = true;
@@ -174,6 +213,9 @@ size_t key_config_to_json(const key_mapper_engine_t *engine, char *out, size_t o
                 if (b->repeat_action.modifier != 0) obj["repeat_mod"] = b->repeat_action.modifier;
                 if (b->repeat_action.key_code != 0) obj["repeat_key"] = b->repeat_action.key_code;
                 if (b->repeat_action.consumer_code != 0) obj["repeat_cons"] = b->repeat_action.consumer_code;
+                if (b->repeat_action.mouse_dx != 0) obj["repeat_dx"] = b->repeat_action.mouse_dx;
+                if (b->repeat_action.mouse_dy != 0) obj["repeat_dy"] = b->repeat_action.mouse_dy;
+                if (b->repeat_action.mouse_wheel != 0) obj["repeat_wheel"] = b->repeat_action.mouse_wheel;
                 obj["repeat_delay_ms"] = b->repeat_delay_ms;
                 obj["repeat_interval_ms"] = b->repeat_interval_ms;
             }
@@ -215,9 +257,11 @@ bool key_config_from_json(key_mapper_engine_t *engine, const char *json_str)
 
             key_layer_t *layer = &tmp[id];
             if (!l_obj["name"].isNull()) {
-                std::string nm = l_obj["name"].as<std::string>();
-                strncpy(layer->name, nm.c_str(), sizeof(layer->name) - 1);
-                layer->name[sizeof(layer->name) - 1] = '\0';
+                const char *nm = l_obj["name"].as<const char *>();
+                if (nm) {
+                    strncpy(layer->name, nm, sizeof(layer->name) - 1);
+                    layer->name[sizeof(layer->name) - 1] = '\0';
+                }
             }
             layer->type = (layer_type_t)parse_u32_or_hex(l_obj["type"], (uint32_t)layer->type);
             layer->timeout_sec = (uint16_t)parse_u32_or_hex(l_obj["timeout"], layer->timeout_sec);
@@ -233,6 +277,13 @@ bool key_config_from_json(key_mapper_engine_t *engine, const char *json_str)
     } else if (doc["bindings"].is<JsonArray>()) {
         parse_bindings_array(doc["bindings"].as<JsonArray>(), &tmp[0]);
         applied = true;
+    }
+
+    if (applied) {
+        app_log("KEYMAP", "Parsed L0=%u L1=%u L2=%u L3=%u L4=%u bindings",
+                (unsigned)tmp[0].binding_count, (unsigned)tmp[1].binding_count,
+                (unsigned)tmp[2].binding_count, (unsigned)tmp[3].binding_count,
+                (unsigned)tmp[4].binding_count);
     }
 
     if (!applied) {
@@ -360,6 +411,19 @@ bool key_config_storage_load(key_mapper_engine_t *engine)
         if (hdr->binding_count > 0) {
             memcpy(layer->bindings, buf + sizeof(layer_hdr_t),
                    hdr->binding_count * sizeof(key_binding_t));
+        }
+    }
+
+    // Migrate legacy factory layer types to persistent. The WebUI presents
+    // configurations as long-lived profiles; the old default "15 s timeout"
+    // and "one-shot" behaviours made a selected configuration silently revert.
+    if (ok) {
+        for (int i = 1; i < MAX_LAYERS; i++) {
+            if ((tmp[i].type == LAYER_TYPE_TIMEOUT && tmp[i].timeout_sec == 15) ||
+                tmp[i].type == LAYER_TYPE_ONESHOT) {
+                tmp[i].type = LAYER_TYPE_PERSISTENT;
+                tmp[i].timeout_sec = 0;
+            }
         }
     }
 

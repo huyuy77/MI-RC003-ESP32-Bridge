@@ -19,6 +19,15 @@ bool usb_hid_consumer_press(uint16_t usage_code);
 bool usb_hid_consumer_release(void);
 bool usb_hid_consumer_tap(uint16_t usage_code);
 
+/** @brief Mouse button control. @p button_mask is a USB_MOUSE_BTN_* bitmask. */
+bool usb_hid_mouse_button_press(uint8_t button_mask);
+bool usb_hid_mouse_button_release(uint8_t button_mask);
+bool usb_hid_mouse_buttons_release(void);
+
+/** @brief Relative cursor movement and wheel scroll. */
+bool usb_hid_mouse_move(int8_t dx, int8_t dy);
+bool usb_hid_mouse_wheel(int8_t wheel);
+
 /** @brief Dispatch a high-level key action produced by the key engine. */
 void usb_hid_dispatch_action(const key_action_t *action);
 

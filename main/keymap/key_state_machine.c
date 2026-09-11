@@ -6,6 +6,9 @@
 
 static SemaphoreHandle_t s_key_engine_mutex = NULL;
 
+// While a mouse-move key is held, emit one relative step every this many ms.
+#define MOUSE_MOVE_INTERVAL_MS 15
+
 void key_engine_lock(void)
 {
     if (!s_key_engine_mutex) {
@@ -70,49 +73,60 @@ static int find_binding_index_in_layer(const key_layer_t *layer, uint8_t raw_key
     return -1;
 }
 
-// Merge the active layer override with the Layer 0 base (layer transparency).
+// Resolve the binding for a key on the active configuration. Configurations
+// 1..4 are independent from the default configuration: a key only acts if it
+// is defined in the active configuration. Use the explicit "transparent"
+// action (ACTION_TRANSPARENT) to inherit a gesture from the default config.
 static void get_effective_binding(const key_mapper_engine_t *engine, uint8_t raw_key, key_binding_t *out_b)
 {
     memset(out_b, 0, sizeof(key_binding_t));
     out_b->source_vk = canonical_source_vk(raw_key);
 
-    int idx0 = find_binding_index_in_layer(&engine->layers[0], raw_key);
-    if (idx0 >= 0) {
-        *out_b = engine->layers[0].bindings[idx0];
+    uint8_t cur = engine->active_layer;
+
+    if (cur == 0) {
+        int idx0 = find_binding_index_in_layer(&engine->layers[0], raw_key);
+        if (idx0 >= 0) {
+            *out_b = engine->layers[0].bindings[idx0];
+        }
+        return;
+    }
+    if (cur >= MAX_LAYERS) {
+        return;
     }
 
-    uint8_t cur = engine->active_layer;
-    if (cur > 0 && cur < MAX_LAYERS) {
-        int cur_idx = find_binding_index_in_layer(&engine->layers[cur], raw_key);
-        if (cur_idx >= 0) {
-            const key_binding_t *ov = &engine->layers[cur].bindings[cur_idx];
-            if (ov->has_click) {
-                if (ov->click_action.type != ACTION_TRANSPARENT) {
-                    out_b->has_click = true;
-                    out_b->click_action = ov->click_action;
-                }
-            }
-            if (ov->has_long) {
-                if (ov->long_action.type != ACTION_TRANSPARENT) {
-                    out_b->has_long = true;
-                    out_b->long_action = ov->long_action;
-                    out_b->long_ms = ov->long_ms;
-                }
-            }
-            if (ov->has_double) {
-                if (ov->double_action.type != ACTION_TRANSPARENT) {
-                    out_b->has_double = true;
-                    out_b->double_action = ov->double_action;
-                    out_b->double_ms = ov->double_ms;
-                }
-            }
-            if (ov->has_repeat) {
-                out_b->has_repeat = ov->has_repeat;
-                out_b->repeat_action = ov->repeat_action;
-                out_b->repeat_delay_ms = ov->repeat_delay_ms;
-                out_b->repeat_interval_ms = ov->repeat_interval_ms;
-            }
-        }
+    // Start from the active configuration's own binding.
+    const key_layer_t *layer = &engine->layers[cur];
+    int idx = find_binding_index_in_layer(layer, raw_key);
+    if (idx >= 0) {
+        *out_b = layer->bindings[idx];
+    }
+
+    // Explicit transparency: fall back to the default config per gesture.
+    int idx0 = find_binding_index_in_layer(&engine->layers[0], raw_key);
+    if (idx0 < 0) {
+        return;
+    }
+    const key_binding_t *base = &engine->layers[0].bindings[idx0];
+
+    if (out_b->has_click && out_b->click_action.type == ACTION_TRANSPARENT) {
+        out_b->click_action = base->click_action;
+        out_b->has_click = base->has_click;
+    }
+    if (out_b->has_long && out_b->long_action.type == ACTION_TRANSPARENT) {
+        out_b->long_action = base->long_action;
+        out_b->long_ms = base->long_ms;
+        out_b->has_long = base->has_long;
+    }
+    if (out_b->has_double && out_b->double_action.type == ACTION_TRANSPARENT) {
+        out_b->double_action = base->double_action;
+        out_b->double_ms = base->double_ms;
+        out_b->has_double = base->has_double;
+    }
+    if (out_b->has_repeat && out_b->repeat_action.type == ACTION_TRANSPARENT) {
+        out_b->repeat_action = base->repeat_action;
+        out_b->repeat_delay_ms = base->repeat_delay_ms;
+        out_b->repeat_interval_ms = base->repeat_interval_ms;
     }
 }
 
@@ -142,7 +156,9 @@ static void emit_action(key_mapper_engine_t *engine, const key_action_t *action,
     if (engine->active_layer != 0 && engine->layers[engine->active_layer].type == LAYER_TYPE_ONESHOT) {
         if (action->type == ACTION_KEYBOARD_TAP || action->type == ACTION_CONSUMER_TAP ||
             action->type == ACTION_KEYBOARD_RELEASE || action->type == ACTION_CONSUMER_RELEASE ||
-            action->type == ACTION_VOICE_RELEASE) {
+            action->type == ACTION_VOICE_RELEASE ||
+            action->type == ACTION_MOUSE_BUTTON_TAP || action->type == ACTION_MOUSE_BUTTON_RELEASE ||
+            action->type == ACTION_MOUSE_MOVE || action->type == ACTION_MOUSE_WHEEL) {
             key_engine_switch_layer(engine, 0, engine->last_telemetry.timestamp);
         }
     }
@@ -152,10 +168,13 @@ static void emit_action_as_tap_if_hold(key_mapper_engine_t *engine, const key_ac
 {
     if (!action || action->type == ACTION_NONE || action->type == ACTION_TRANSPARENT) return;
     if (action->type == ACTION_KEYBOARD_HOLD) {
-        key_action_t tap = { ACTION_KEYBOARD_TAP, action->modifier, action->key_code, 0, 0 };
+        key_action_t tap = { ACTION_KEYBOARD_TAP, action->modifier, action->key_code, 0, 0, 0, 0, 0 };
         emit_action(engine, &tap, source_vk, false);
     } else if (action->type == ACTION_CONSUMER_HOLD) {
-        key_action_t tap = { ACTION_CONSUMER_TAP, 0, 0, action->consumer_code, 0 };
+        key_action_t tap = { ACTION_CONSUMER_TAP, 0, 0, action->consumer_code, 0, 0, 0, 0 };
+        emit_action(engine, &tap, source_vk, false);
+    } else if (action->type == ACTION_MOUSE_BUTTON_HOLD) {
+        key_action_t tap = { ACTION_MOUSE_BUTTON_TAP, 0, action->key_code, 0, 0, 0, 0, 0 };
         emit_action(engine, &tap, source_vk, false);
     } else {
         emit_action(engine, action, source_vk, false);
@@ -196,7 +215,7 @@ void key_engine_load_defaults(key_mapper_engine_t *engine)
     // Layer 0: default
     // ----------------------------------------------------
     key_layer_t *l0 = &engine->layers[0];
-    strncpy(l0->name, "默认层", sizeof(l0->name) - 1);
+    strncpy(l0->name, "默认配置", sizeof(l0->name) - 1);
     l0->type = LAYER_TYPE_PERSISTENT;
     l0->timeout_sec = 0;
     l0->led_color = 0x00FF00;
@@ -208,10 +227,10 @@ void key_engine_load_defaults(key_mapper_engine_t *engine)
         memset(&b, 0, sizeof(b));
         b.source_vk = MI_KEY_POWER;
         b.has_click = true;
-        b.click_action = (key_action_t){ ACTION_KEYBOARD_TAP, USB_MOD_LALT, USB_KEY_TAB, 0, 0 };
+        b.click_action = (key_action_t){ ACTION_KEYBOARD_TAP, USB_MOD_LALT, USB_KEY_TAB, 0, 0, 0, 0, 0 };
         b.has_long = true;
         b.long_ms = 600;
-        b.long_action = (key_action_t){ ACTION_CONSUMER_TAP, USB_MOD_NONE, USB_KEY_NONE, USB_CONSUMER_SLEEP, 0 };
+        b.long_action = (key_action_t){ ACTION_CONSUMER_TAP, USB_MOD_NONE, USB_KEY_NONE, USB_CONSUMER_SLEEP, 0, 0, 0, 0 };
         l0->bindings[l0->binding_count++] = b;
     }
     // Voice: hold to stream microphone + hotkey
@@ -220,7 +239,7 @@ void key_engine_load_defaults(key_mapper_engine_t *engine)
         memset(&b, 0, sizeof(b));
         b.source_vk = MI_KEY_VOICE;
         b.has_click = true;
-        b.click_action = (key_action_t){ ACTION_VOICE_HOLD, DEFAULT_VOICE_MODIFIER, DEFAULT_VOICE_KEY, 0, 0 };
+        b.click_action = (key_action_t){ ACTION_VOICE_HOLD, DEFAULT_VOICE_MODIFIER, DEFAULT_VOICE_KEY, 0, 0, 0, 0, 0 };
         l0->bindings[l0->binding_count++] = b;
     }
     // D-Pad
@@ -229,7 +248,7 @@ void key_engine_load_defaults(key_mapper_engine_t *engine)
         memset(&b, 0, sizeof(b));
         b.source_vk = MI_KEY_UP;
         b.has_click = true;
-        b.click_action = (key_action_t){ ACTION_KEYBOARD_HOLD, USB_MOD_NONE, USB_KEY_UP, 0, 0 };
+        b.click_action = (key_action_t){ ACTION_KEYBOARD_HOLD, USB_MOD_NONE, USB_KEY_UP, 0, 0, 0, 0, 0 };
         l0->bindings[l0->binding_count++] = b;
     }
     {
@@ -237,7 +256,7 @@ void key_engine_load_defaults(key_mapper_engine_t *engine)
         memset(&b, 0, sizeof(b));
         b.source_vk = MI_KEY_DOWN;
         b.has_click = true;
-        b.click_action = (key_action_t){ ACTION_KEYBOARD_HOLD, USB_MOD_NONE, USB_KEY_DOWN, 0, 0 };
+        b.click_action = (key_action_t){ ACTION_KEYBOARD_HOLD, USB_MOD_NONE, USB_KEY_DOWN, 0, 0, 0, 0, 0 };
         l0->bindings[l0->binding_count++] = b;
     }
     {
@@ -245,7 +264,7 @@ void key_engine_load_defaults(key_mapper_engine_t *engine)
         memset(&b, 0, sizeof(b));
         b.source_vk = MI_KEY_LEFT;
         b.has_click = true;
-        b.click_action = (key_action_t){ ACTION_KEYBOARD_HOLD, USB_MOD_NONE, USB_KEY_LEFT, 0, 0 };
+        b.click_action = (key_action_t){ ACTION_KEYBOARD_HOLD, USB_MOD_NONE, USB_KEY_LEFT, 0, 0, 0, 0, 0 };
         l0->bindings[l0->binding_count++] = b;
     }
     {
@@ -253,7 +272,7 @@ void key_engine_load_defaults(key_mapper_engine_t *engine)
         memset(&b, 0, sizeof(b));
         b.source_vk = MI_KEY_RIGHT;
         b.has_click = true;
-        b.click_action = (key_action_t){ ACTION_KEYBOARD_HOLD, USB_MOD_NONE, USB_KEY_RIGHT, 0, 0 };
+        b.click_action = (key_action_t){ ACTION_KEYBOARD_HOLD, USB_MOD_NONE, USB_KEY_RIGHT, 0, 0, 0, 0, 0 };
         l0->bindings[l0->binding_count++] = b;
     }
     // OK
@@ -262,7 +281,7 @@ void key_engine_load_defaults(key_mapper_engine_t *engine)
         memset(&b, 0, sizeof(b));
         b.source_vk = MI_KEY_OK;
         b.has_click = true;
-        b.click_action = (key_action_t){ ACTION_KEYBOARD_TAP, USB_MOD_NONE, USB_KEY_RETURN, 0, 0 };
+        b.click_action = (key_action_t){ ACTION_KEYBOARD_TAP, USB_MOD_NONE, USB_KEY_RETURN, 0, 0, 0, 0, 0 };
         l0->bindings[l0->binding_count++] = b;
     }
     // Back
@@ -271,7 +290,7 @@ void key_engine_load_defaults(key_mapper_engine_t *engine)
         memset(&b, 0, sizeof(b));
         b.source_vk = MI_KEY_BACK;
         b.has_click = true;
-        b.click_action = (key_action_t){ ACTION_CONSUMER_TAP, USB_MOD_NONE, USB_KEY_NONE, USB_CONSUMER_AC_BACK, 0 };
+        b.click_action = (key_action_t){ ACTION_CONSUMER_TAP, USB_MOD_NONE, USB_KEY_NONE, USB_CONSUMER_AC_BACK, 0, 0, 0, 0 };
         l0->bindings[l0->binding_count++] = b;
     }
     // Home -> Win+D
@@ -280,7 +299,7 @@ void key_engine_load_defaults(key_mapper_engine_t *engine)
         memset(&b, 0, sizeof(b));
         b.source_vk = MI_KEY_HOME;
         b.has_click = true;
-        b.click_action = (key_action_t){ ACTION_KEYBOARD_TAP, USB_MOD_LGUI, USB_KEY_D, 0, 0 };
+        b.click_action = (key_action_t){ ACTION_KEYBOARD_TAP, USB_MOD_LGUI, USB_KEY_D, 0, 0, 0, 0, 0 };
         l0->bindings[l0->binding_count++] = b;
     }
     // Menu -> Space
@@ -289,7 +308,7 @@ void key_engine_load_defaults(key_mapper_engine_t *engine)
         memset(&b, 0, sizeof(b));
         b.source_vk = MI_KEY_MENU;
         b.has_click = true;
-        b.click_action = (key_action_t){ ACTION_KEYBOARD_TAP, USB_MOD_NONE, USB_KEY_SPACE, 0, 0 };
+        b.click_action = (key_action_t){ ACTION_KEYBOARD_TAP, USB_MOD_NONE, USB_KEY_SPACE, 0, 0, 0, 0, 0 };
         l0->bindings[l0->binding_count++] = b;
     }
     // Volume up with repeat
@@ -298,9 +317,9 @@ void key_engine_load_defaults(key_mapper_engine_t *engine)
         memset(&b, 0, sizeof(b));
         b.source_vk = MI_KEY_VOL_UP;
         b.has_click = true;
-        b.click_action = (key_action_t){ ACTION_CONSUMER_TAP, USB_MOD_NONE, USB_KEY_NONE, USB_CONSUMER_VOLUME_UP, 0 };
+        b.click_action = (key_action_t){ ACTION_CONSUMER_TAP, USB_MOD_NONE, USB_KEY_NONE, USB_CONSUMER_VOLUME_UP, 0, 0, 0, 0 };
         b.has_repeat = true;
-        b.repeat_action = (key_action_t){ ACTION_CONSUMER_TAP, USB_MOD_NONE, USB_KEY_NONE, USB_CONSUMER_VOLUME_UP, 0 };
+        b.repeat_action = (key_action_t){ ACTION_CONSUMER_TAP, USB_MOD_NONE, USB_KEY_NONE, USB_CONSUMER_VOLUME_UP, 0, 0, 0, 0 };
         b.repeat_delay_ms = 350;
         b.repeat_interval_ms = 70;
         l0->bindings[l0->binding_count++] = b;
@@ -311,9 +330,9 @@ void key_engine_load_defaults(key_mapper_engine_t *engine)
         memset(&b, 0, sizeof(b));
         b.source_vk = MI_KEY_VOL_DOWN;
         b.has_click = true;
-        b.click_action = (key_action_t){ ACTION_CONSUMER_TAP, USB_MOD_NONE, USB_KEY_NONE, USB_CONSUMER_VOLUME_DOWN, 0 };
+        b.click_action = (key_action_t){ ACTION_CONSUMER_TAP, USB_MOD_NONE, USB_KEY_NONE, USB_CONSUMER_VOLUME_DOWN, 0, 0, 0, 0 };
         b.has_repeat = true;
-        b.repeat_action = (key_action_t){ ACTION_CONSUMER_TAP, USB_MOD_NONE, USB_KEY_NONE, USB_CONSUMER_VOLUME_DOWN, 0 };
+        b.repeat_action = (key_action_t){ ACTION_CONSUMER_TAP, USB_MOD_NONE, USB_KEY_NONE, USB_CONSUMER_VOLUME_DOWN, 0, 0, 0, 0 };
         b.repeat_delay_ms = 350;
         b.repeat_interval_ms = 70;
         l0->bindings[l0->binding_count++] = b;
@@ -324,30 +343,31 @@ void key_engine_load_defaults(key_mapper_engine_t *engine)
         memset(&b, 0, sizeof(b));
         b.source_vk = MI_KEY_TV;
         b.has_click = true;
-        b.click_action = (key_action_t){ ACTION_KEYBOARD_TAP, USB_MOD_NONE, USB_KEY_F8, 0, 0 };
+        b.click_action = (key_action_t){ ACTION_KEYBOARD_TAP, USB_MOD_NONE, USB_KEY_F8, 0, 0, 0, 0, 0 };
         l0->bindings[l0->binding_count++] = b;
     }
 
-    // Preset layers 1..4 (inherit Layer 0 by default)
-    strncpy(engine->layers[1].name, "层1", sizeof(engine->layers[1].name) - 1);
-    engine->layers[1].type = LAYER_TYPE_TIMEOUT;
-    engine->layers[1].timeout_sec = 15;
+    // Preset layers 1..4 (inherit Layer 0 by default). All are persistent so a
+    // selected configuration stays active until the user switches again.
+    strncpy(engine->layers[1].name, "配置1", sizeof(engine->layers[1].name) - 1);
+    engine->layers[1].type = LAYER_TYPE_PERSISTENT;
+    engine->layers[1].timeout_sec = 0;
     engine->layers[1].led_color = 0x06B6D4;
     engine->layers[1].binding_count = 0;
 
-    strncpy(engine->layers[2].name, "层2", sizeof(engine->layers[2].name) - 1);
+    strncpy(engine->layers[2].name, "配置2", sizeof(engine->layers[2].name) - 1);
     engine->layers[2].type = LAYER_TYPE_PERSISTENT;
     engine->layers[2].timeout_sec = 0;
     engine->layers[2].led_color = 0xA855F7;
     engine->layers[2].binding_count = 0;
 
-    strncpy(engine->layers[3].name, "层3", sizeof(engine->layers[3].name) - 1);
-    engine->layers[3].type = LAYER_TYPE_ONESHOT;
+    strncpy(engine->layers[3].name, "配置3", sizeof(engine->layers[3].name) - 1);
+    engine->layers[3].type = LAYER_TYPE_PERSISTENT;
     engine->layers[3].timeout_sec = 0;
     engine->layers[3].led_color = 0xEAB308;
     engine->layers[3].binding_count = 0;
 
-    strncpy(engine->layers[4].name, "层4", sizeof(engine->layers[4].name) - 1);
+    strncpy(engine->layers[4].name, "配置4", sizeof(engine->layers[4].name) - 1);
     engine->layers[4].type = LAYER_TYPE_PERSISTENT;
     engine->layers[4].timeout_sec = 0;
     engine->layers[4].led_color = 0xFFFFFF;
@@ -443,15 +463,27 @@ void key_engine_feed_key(key_mapper_engine_t *engine, uint8_t raw_key_code, bool
             s->press_timestamp = now_ms;
             s->long_fired = false;
 
+            if (engine->active_layer != 0) {
+                app_log("KEYMAP", "Key 0x%02X down: layer=%u click_type=%u",
+                        raw_key_code, engine->active_layer, (unsigned)b.click_action.type);
+            }
+
             if (b.has_repeat) {
                 s->next_repeat_timestamp = now_ms + b.repeat_delay_ms;
             }
 
             if (!b.has_long && !b.has_double) {
-                if (b.click_action.type == ACTION_KEYBOARD_HOLD ||
+                if (b.click_action.type == ACTION_MOUSE_MOVE) {
+                    // Move one step now, then keep moving while held.
+                    emit_action(engine, &b.click_action, raw_key_code, true);
+                    s->move_active = true;
+                    s->next_move_timestamp = now_ms + MOUSE_MOVE_INTERVAL_MS;
+                } else if (b.click_action.type == ACTION_KEYBOARD_HOLD ||
                     b.click_action.type == ACTION_CONSUMER_HOLD ||
                     b.click_action.type == ACTION_VOICE_HOLD ||
-                    b.click_action.type == ACTION_SWITCH_LAYER) {
+                    b.click_action.type == ACTION_SWITCH_LAYER ||
+                    b.click_action.type == ACTION_MOUSE_BUTTON_HOLD ||
+                    b.click_action.type == ACTION_MOUSE_WHEEL) {
                     emit_action(engine, &b.click_action, raw_key_code, true);
                 }
             }
@@ -459,30 +491,40 @@ void key_engine_feed_key(key_mapper_engine_t *engine, uint8_t raw_key_code, bool
     } else {
         if (s->is_pressed) {
             s->is_pressed = false;
+            s->move_active = false;
             s->release_timestamp = now_ms;
             uint32_t duration = now_ms - s->press_timestamp;
             engine->last_telemetry.duration_ms = duration;
 
             if (!b.has_long && !b.has_double) {
                 if (b.click_action.type == ACTION_KEYBOARD_HOLD) {
-                    key_action_t rel = { ACTION_KEYBOARD_RELEASE, 0, 0, 0, 0 };
+                    key_action_t rel = { ACTION_KEYBOARD_RELEASE, 0, 0, 0, 0, 0, 0, 0 };
                     emit_action(engine, &rel, raw_key_code, false);
                 } else if (b.click_action.type == ACTION_CONSUMER_HOLD) {
-                    key_action_t rel = { ACTION_CONSUMER_RELEASE, 0, 0, 0, 0 };
+                    key_action_t rel = { ACTION_CONSUMER_RELEASE, 0, 0, 0, 0, 0, 0, 0 };
                     emit_action(engine, &rel, raw_key_code, false);
                 } else if (b.click_action.type == ACTION_VOICE_HOLD) {
-                    key_action_t rel = { ACTION_VOICE_RELEASE, 0, 0, 0, 0 };
+                    key_action_t rel = { ACTION_VOICE_RELEASE, 0, 0, 0, 0, 0, 0, 0 };
                     emit_action(engine, &rel, raw_key_code, false);
+                } else if (b.click_action.type == ACTION_MOUSE_BUTTON_HOLD) {
+                    key_action_t rel = { ACTION_MOUSE_BUTTON_RELEASE, 0, b.click_action.key_code, 0, 0, 0, 0, 0 };
+                    emit_action(engine, &rel, raw_key_code, false);
+                } else if (b.click_action.type == ACTION_MOUSE_MOVE ||
+                           b.click_action.type == ACTION_MOUSE_WHEEL) {
+                    // Movement is emitted on press (and via repeat); nothing on release.
                 } else if (b.has_click && b.click_action.type != ACTION_SWITCH_LAYER) {
                     emit_action(engine, &b.click_action, raw_key_code, false);
                 }
             } else {
                 if (s->long_fired) {
                     if (b.long_action.type == ACTION_KEYBOARD_HOLD) {
-                        key_action_t rel = { ACTION_KEYBOARD_RELEASE, 0, 0, 0, 0 };
+                        key_action_t rel = { ACTION_KEYBOARD_RELEASE, 0, 0, 0, 0, 0, 0, 0 };
                         emit_action(engine, &rel, raw_key_code, false);
                     } else if (b.long_action.type == ACTION_CONSUMER_HOLD) {
-                        key_action_t rel = { ACTION_CONSUMER_RELEASE, 0, 0, 0, 0 };
+                        key_action_t rel = { ACTION_CONSUMER_RELEASE, 0, 0, 0, 0, 0, 0, 0 };
+                        emit_action(engine, &rel, raw_key_code, false);
+                    } else if (b.long_action.type == ACTION_MOUSE_BUTTON_HOLD) {
+                        key_action_t rel = { ACTION_MOUSE_BUTTON_RELEASE, 0, b.long_action.key_code, 0, 0, 0, 0, 0 };
                         emit_action(engine, &rel, raw_key_code, false);
                     }
                 } else if (b.has_click) {
@@ -539,7 +581,12 @@ void key_engine_tick(key_mapper_engine_t *engine, uint32_t now_ms)
                 s->long_fired = true;
                 emit_action(engine, &b.long_action, b.source_vk, true);
             }
-            if (b.has_repeat && now_ms >= s->next_repeat_timestamp) {
+            if (s->move_active && b.click_action.type == ACTION_MOUSE_MOVE) {
+                if (now_ms >= s->next_move_timestamp) {
+                    emit_action(engine, &b.click_action, b.source_vk, true);
+                    s->next_move_timestamp = now_ms + MOUSE_MOVE_INTERVAL_MS;
+                }
+            } else if (b.has_repeat && now_ms >= s->next_repeat_timestamp) {
                 emit_action(engine, &b.repeat_action, b.source_vk, true);
                 s->next_repeat_timestamp = now_ms + b.repeat_interval_ms;
             }
@@ -592,6 +639,7 @@ void key_engine_release_all(key_mapper_engine_t *engine, uint32_t now_ms)
         }
         s->waiting_double = false;
         s->press_count = 0;
+        s->move_active = false;
     }
     key_engine_unlock();
 }
