@@ -3,6 +3,11 @@
 基于 **ESP-IDF** 的 ESP32-S3 固件：将 **小米蓝牙遥控器 2 Pro（RC003）** 的按键与语音通过
 USB 复合设备转发到 Windows，并使用 **浏览器 WebUSB** 完成设备配置。
 
+> [!WARNING]
+> **本项目由 AI 修改而成，尚未开发完全，可能存在较多的 bug，暂不建议使用。**
+> 如需稳定可用的方案，建议使用
+> [cuicui-V5/RemoteMapper-ESP32](https://github.com/cuicui-V5/RemoteMapper-ESP32)。
+
 > 本项目基于 [cuicui-V5/RemoteMapper-ESP32](https://github.com/cuicui-V5/RemoteMapper-ESP32)
 > 的硬件桥接思路，参考 [HD838A/remote-mic-app](https://github.com/HD838A/remote-mic-app)
 > 的 RC003 协议实现与按键/UI 设计，从 Arduino/PlatformIO 迁移到 **ESP-IDF**，
