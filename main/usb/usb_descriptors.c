@@ -19,7 +19,7 @@ const tusb_desc_device_t usb_device_descriptor = {
     .bDeviceProtocol = MISC_PROTOCOL_IAD,
     .bMaxPacketSize0 = CFG_TUD_ENDPOINT0_SIZE,
     .idVendor = 0x303A,      // Espressif
-    .idProduct = 0x8304,     // MIRC003 bridge
+    .idProduct = 0x8304,     // MI-RC003 bridge
     .bcdDevice = 0x0100,
     .iManufacturer = 0x01,
     .iProduct = 0x02,
@@ -33,12 +33,12 @@ const tusb_desc_device_t usb_device_descriptor = {
 const char *usb_string_descriptors[] = {
     (char[]){0x09, 0x04},        // 0: language id (English US)
     "HD838A",                    // 1: manufacturer
-    "MIRC003 Remote Bridge",     // 2: product
-    "MIRC003-0001",              // 3: serial
+    "MI-RC003 Remote Bridge",     // 2: product
+    "MI-RC003-0001",              // 3: serial
     WEBUSB_LANDING_URL,          // 4: WebUSB landing page
-    "MIRC003 HID",               // 5: HID interface
-    "MIRC003 Microphone",        // 6: UAC microphone
-    "MIRC003 Interface",         // 7: WebUSB vendor interface (esp_tinyusb allows max 8)
+    "MI-RC003 HID",               // 5: HID interface
+    "MI-RC003 Microphone",        // 6: UAC microphone
+    "MI-RC003 Interface",         // 7: WebUSB vendor interface (esp_tinyusb allows max 8)
 };
 const int usb_string_descriptor_count =
     (int)(sizeof(usb_string_descriptors) / sizeof(usb_string_descriptors[0]));

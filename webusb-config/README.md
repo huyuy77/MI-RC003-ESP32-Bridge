@@ -1,6 +1,6 @@
-# MIRC003 Bridge · WebUSB 配置站点
+# MI-RC003 Bridge · WebUSB 配置站点
 
-这是一个纯静态网页，通过浏览器 **WebUSB API** 直接与 MIRC003 Bridge 固件通信，
+这是一个纯静态网页，通过浏览器 **WebUSB API** 直接与 MI-RC003 Bridge 固件通信，
 替代了原 RemoteMapper-ESP32 的 Wi-Fi 热点 + HTTP 网页配置方案。
 
 ## 功能
@@ -20,7 +20,7 @@ cd webusb-config
 python -m http.server 8000
 ```
 
-然后打开 <http://localhost:8000/>，点击「连接设备」，选择 `MIRC003 Remote Bridge`。
+然后打开 <http://localhost:8000/>，点击「连接设备」，选择 `MI-RC003 Remote Bridge`。
 
 ## 部署
 

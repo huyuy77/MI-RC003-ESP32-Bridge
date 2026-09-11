@@ -1,12 +1,12 @@
-# MIRC003 Bridge · WebUI JavaScript API
+# MI-RC003 Bridge · WebUI JavaScript API
 
 > **WebUI 版本**：`1.2`（见 `assets/app.js` 顶部的 `WEBUI_VERSION`，独立于固件版本，仅 UI 变更时递增）。页面右上角标题栏会显示 `WebUI v1.2`。
 
-`assets/mirc003.js` 是一个无依赖的浏览器端库，封装了与 MIRC003 Bridge 固件之间的
+`assets/mi-rc003.js` 是一个无依赖的浏览器端库，封装了与 MI-RC003 Bridge 固件之间的
 WebUSB 通信协议。第三方可以**只写自己的 HTML/JS**，引入该库后调用其 API，
 完全替换默认的 `assets/app.js`。
 
-- 库文件：[`assets/mirc003.js`](./assets/mirc003.js)
+- 库文件：[`assets/mi-rc003.js`](./assets/mi-rc003.js)
 - 默认实现示例：[`assets/app.js`](./assets/app.js)
 - 本地运行：`python -m http.server 8000`，访问 <http://localhost:8000/>
 
@@ -15,12 +15,12 @@ WebUSB 通信协议。第三方可以**只写自己的 HTML/JS**，引入该库�
 ## 1. 引入与快速开始
 
 ```html
-<script src="assets/mirc003.js"></script>
+<script src="assets/mi-rc003.js"></script>
 <script>
-  const dev = new Mirc003();
+  const dev = new MiRC003();
 
   async function run() {
-    await dev.connect();                 // 弹出设备选择框，用户选择 MIRC003 Remote Bridge
+    await dev.connect();                 // 弹出设备选择框，用户选择 MI-RC003 Remote Bridge
     const s = await dev.status();        // 读取状态
     console.log(s.firmware, s.version, s.uptime_sec);
 
@@ -38,9 +38,9 @@ WebUSB 通信协议。第三方可以**只写自己的 HTML/JS**，引入该库�
 
 ## 2. 常量
 
-所有常量挂在 `Mirc003` 上（如 `Mirc003.CMD`）。
+所有常量挂在 `MiRC003` 上（如 `MiRC003.CMD`）。
 
-### `Mirc003.CMD` — 命令字
+### `MiRC003.CMD` — 命令字
 
 | 键 | 值 | 说明 |
 | :--- | :--- | :--- |
@@ -64,7 +64,7 @@ WebUSB 通信协议。第三方可以**只写自己的 HTML/JS**，引入该库�
 | `NVS_RESET` | `0x31` | 恢复出厂（清空 NVS） |
 | `SYSTEM_RESTART` | `0x40` | 重启设备 |
 
-### `Mirc003.ACTION` — 动作类型
+### `MiRC003.ACTION` — 动作类型
 
 ```js
 { 0:"无", 1:"键盘-单击", 2:"键盘-按住", 3:"键盘-释放",
@@ -74,7 +74,7 @@ WebUSB 通信协议。第三方可以**只写自己的 HTML/JS**，引入该库�
   14:"鼠标移动", 15:"鼠标滚轮" }
 ```
 
-### `Mirc003.PHYSICAL_KEYS` — 遥控器物理按键
+### `MiRC003.PHYSICAL_KEYS` — 遥控器物理按键
 
 ```js
 [ { vk: 0x66, name: "电源键" }, { vk: 0x04, name: "语音键" }, ... ]
@@ -82,7 +82,7 @@ WebUSB 通信协议。第三方可以**只写自己的 HTML/JS**，引入该库�
 
 `vk` 为绑定中的 `source_vk`（内部规范化键码）。
 
-### `Mirc003.MOUSE_BUTTONS` — 鼠标按键位
+### `MiRC003.MOUSE_BUTTONS` — 鼠标按键位
 
 ```js
 [ [0x01,"左键"], [0x02,"右键"], [0x04,"中键"], [0x08,"后退键"], [0x10,"前进键"] ]
@@ -90,30 +90,30 @@ WebUSB 通信协议。第三方可以**只写自己的 HTML/JS**，引入该库�
 
 用于鼠标按键类动作的 `*_key`（按钮位掩码）。
 
-### `Mirc003.MOD_BITS` — 键盘修饰键位
+### `MiRC003.MOD_BITS` — 键盘修饰键位
 
 ```js
 [ [0x01,"左Ctrl"], [0x02,"左Shift"], [0x04,"左Alt"], [0x08,"左Win"],
   [0x10,"右Ctrl"], [0x20,"右Shift"], [0x40,"右Alt"], [0x80,"右Win"] ]
 ```
 
-### `Mirc003.HID_GROUPS` / `Mirc003.CONSUMER_GROUPS` — 键码分组
+### `MiRC003.HID_GROUPS` / `MiRC003.CONSUMER_GROUPS` — 键码分组
 
 供构建下拉框使用，格式为 `[组名, [[usage, 名称], ...]]`：
 
 ```js
-Mirc003.HID_GROUPS      // 键盘：字母/数字/常用/符号/F1-F24/导航/小键盘
-Mirc003.CONSUMER_GROUPS // 多媒体：媒体/音量/系统/浏览器
+MiRC003.HID_GROUPS      // 键盘：字母/数字/常用/符号/F1-F24/导航/小键盘
+MiRC003.CONSUMER_GROUPS // 多媒体：媒体/音量/系统/浏览器
 ```
 
 ---
 
-## 3. `Mirc003` 类
+## 3. `MiRC003` 类
 
 ### 构造
 
 ```js
-const dev = new Mirc003(options);
+const dev = new MiRC003(options);
 ```
 
 | 选项 | 类型 | 默认 | 说明 |
@@ -126,7 +126,7 @@ const dev = new Mirc003(options);
 
 | 方法 | 返回 | 说明 |
 | :--- | :--- | :--- |
-| `connect()` | `Promise<Mirc003>` | 弹出选择框、打开设备并占用 WebUSB 厂商接口 |
+| `connect()` | `Promise<MiRC003>` | 弹出选择框、打开设备并占用 WebUSB 厂商接口 |
 | `disconnect()` | `Promise<void>` | 关闭设备 |
 | `isConnected()` | `boolean` | 是否已连接 |
 
@@ -274,15 +274,15 @@ dev.send(cmd, payloadObj?, rawBytes?)
 ```html
 <!DOCTYPE html>
 <html lang="zh-CN">
-<head><meta charset="utf-8"><title>My MIRC003 UI</title></head>
+<head><meta charset="utf-8"><title>My MI-RC003 UI</title></head>
 <body>
   <button id="conn">连接</button>
   <button id="save">保存默认映射</button>
   <pre id="out"></pre>
 
-  <script src="assets/mirc003.js"></script>
+  <script src="assets/mi-rc003.js"></script>
   <script>
-    const dev = new Mirc003();
+    const dev = new MiRC003();
     const out = document.getElementById("out");
     const show = (o) => out.textContent = JSON.stringify(o, null, 2);
 

@@ -1,6 +1,6 @@
 @echo off
 setlocal
-rem MIRC003-bridge-esp32 build helper (ESP-IDF)
+rem MI-RC003-ESP32-Bridge build helper (ESP-IDF)
 rem Activate your ESP-IDF environment first, or let this script try the EIM profile.
 
 where idf.py >nul 2>nul

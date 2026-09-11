@@ -4,15 +4,15 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="theme-color" content="#fbfbfd" />
-  <title>MIRC003 Bridge - WebUSB 配置中心</title>
-  <link rel="stylesheet" href="assets/style.css?v=20" />
+  <title>MI-RC003 Bridge - WebUSB 配置中心</title>
+  <link rel="stylesheet" href="assets/style.css?v=23" />
 </head>
 <body>
   <header class="topbar">
     <div class="brand">
       <div class="logo">MIRC<span>003</span></div>
       <div>
-        <h1>MIRC003 Bridge 配置中心</h1>
+        <h1>MI-RC003 Bridge 配置中心</h1>
         <p class="subtitle">小米蓝牙遥控器 2 Pro (RC003) · ESP32-S3 · WebUSB · <span id="hdr-version">固件 -</span> · <span id="webui-version">WebUI -</span></p>
       </div>
     </div>
@@ -60,7 +60,16 @@
           <span class="live-label">当前按下</span>
           <span id="live-key-name" class="live-value">—</span>
         </div>
-        <pre id="telemetry" class="code">-</pre>
+        <div class="live-meta">
+          <span class="chip">配置 <b id="live-layer">-</b></span>
+          <span class="chip">最近动作 <b id="live-action">-</b></span>
+          <span class="chip">键值 <b id="live-codes">-</b></span>
+          <span class="chip">时长 <b id="live-duration">-</b></span>
+        </div>
+        <details class="live-raw">
+          <summary>原始数据</summary>
+          <pre id="telemetry" class="code">-</pre>
+        </details>
       </div>
     </section>
 
@@ -77,7 +86,7 @@
           </div>
         </div>
         <div id="layer-tabs" class="layer-tabs"></div>
-        <p class="hint">各配置方案的按键映射相互独立：只有在当前配置里设置过的按键才会生效。若想让某个手势沿用默认配置，把该动作设为「穿透继承」。</p>
+        <p class="hint">各配置方案的按键映射相互独立：只有在当前配置里设置过的按键才会生效。若想让某个手势沿用默认配置，把该动作设为「穿透继承」。<br />蓝色圆点表示该键已配置，配置标签上的绿点表示设备当前生效的配置；点击配置标签会同时切换设备。</p>
       </div>
       <div id="keymap-grid" class="keymap-grid"></div>
       <p class="remote-info" id="remote-info">将鼠标移到按键上查看映射</p>
@@ -161,6 +170,7 @@
       </div>
       <div id="modal-body"></div>
       <div class="row end">
+        <button id="modal-clear" class="btn small danger">清除此键</button>
         <button id="modal-cancel" class="btn small">取消</button>
         <button id="modal-apply" class="btn small primary">应用</button>
       </div>
@@ -169,7 +179,7 @@
 
   <div id="toast" class="toast hidden"></div>
 
-  <script src="assets/mirc003.js?v=5"></script>
-  <script src="assets/app.js?v=35"></script>
+  <script src="assets/mi-rc003.js?v=6"></script>
+  <script src="assets/app.js?v=38"></script>
 </body>
 </html>

@@ -1,5 +1,5 @@
 ## IDF Component Manager Manifest File
-## Managed dependencies for the MIRC003 bridge firmware.
+## Managed dependencies for the MI-RC003 bridge firmware.
 dependencies:
   idf: ">=5.1"
   # TinyUSB device stack with the composite descriptor control helpers.

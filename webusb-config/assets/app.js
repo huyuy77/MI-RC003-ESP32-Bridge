@@ -1,8 +1,8 @@
 /*
- * MIRC003 Bridge - default WebUSB configuration UI.
+ * MI-RC003 Bridge - default WebUSB configuration UI.
  *
  * This file is only the presentation layer. All device communication goes
- * through the reusable `Mirc003` client (assets/mirc003.js). Third parties can
+ * through the reusable `MiRC003` client (assets/mi-rc003.js). Third parties can
  * replace this file entirely and build their own UI on the same API; see
  * doc.md for the reference.
  */
@@ -12,13 +12,13 @@
   // WebUI version (independent of the firmware version). Bump on UI changes.
   const WEBUI_VERSION = "1.2";
 
-  const dev = new Mirc003();
-  const ACTION = Mirc003.ACTION;
-  const PHYSICAL_KEYS = Mirc003.PHYSICAL_KEYS;
-  const MOD_BITS = Mirc003.MOD_BITS;
-  const MOUSE_BUTTONS = Mirc003.MOUSE_BUTTONS;
-  const HID_GROUPS = Mirc003.HID_GROUPS;
-  const CONSUMER_GROUPS = Mirc003.CONSUMER_GROUPS;
+  const dev = new MiRC003();
+  const ACTION = MiRC003.ACTION;
+  const PHYSICAL_KEYS = MiRC003.PHYSICAL_KEYS;
+  const MOD_BITS = MiRC003.MOD_BITS;
+  const MOUSE_BUTTONS = MiRC003.MOUSE_BUTTONS;
+  const HID_GROUPS = MiRC003.HID_GROUPS;
+  const CONSUMER_GROUPS = MiRC003.CONSUMER_GROUPS;
 
   const ICON = {
     power: '<svg viewBox="0 0 24 24"><path d="M12 3v9M7.05 5.93a8 8 0 1 0 9.9 0"/></svg>',
@@ -35,7 +35,9 @@
   };
 
   let keymap = null;
-  let activeLayer = 0;
+  let activeLayer = 0;          // configuration currently being edited
+  let deviceActiveLayer = 0;    // configuration currently active on the device
+  let dirty = false;            // unsaved keymap edits
   let logTimer = null;
   let statusTimer = null;
   let telemetryTimer = null;
@@ -74,6 +76,11 @@
     el.classList.remove("hidden");
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => el.classList.add("hidden"), 2600);
+  }
+
+  function updateDirtyIndicator() {
+    const btn = $("btn-keymap-save");
+    if (btn) btn.classList.toggle("dirty", dirty);
   }
 
   /* ------------------------- connection ------------------------- */
@@ -118,8 +125,13 @@
       $("st-uptime").textContent = formatUptime(s.uptime_sec || 0);
       $("st-ble").textContent = ["未连接", "扫描中", "连接中", "已连接", "语音中"][s.ble_state] || s.ble_state;
       $("st-battery").textContent = (typeof s.battery === "number" && s.battery >= 0) ? s.battery + "%" : "未知";
-      const activeMode = getLayer(s.active_layer ?? 0);
-      $("st-layer").textContent = activeMode ? configLabel(activeMode) : ("配置" + (s.active_layer ?? 0));
+      const devLayer = s.active_layer ?? 0;
+      const activeMode = getLayer(devLayer);
+      $("st-layer").textContent = activeMode ? configLabel(activeMode) : ("配置" + devLayer);
+      if (devLayer !== deviceActiveLayer) {
+        deviceActiveLayer = devLayer;
+        if (keymap) renderLayerTabs();
+      }
       $("st-frames").textContent = s.frames_decoded ?? 0;
       $("st-heap").textContent = formatBytes(s.free_heap);
       $("st-psram").textContent = formatBytes(s.free_psram);
@@ -136,8 +148,31 @@
       const nameEl = $("live-key-name");
       nameEl.textContent = pk ? pk.name : "—";
       nameEl.classList.toggle("active", !!pk);
+
+      // Highlight the pressed key on the remote image (keymap tab).
+      document.querySelectorAll(".remote .pressed").forEach((el) => el.classList.remove("pressed"));
+      if (pk) {
+        const el = document.querySelector(`.remote [data-vk="${pk.vk}"]`);
+        if (el) el.classList.add("pressed");
+      }
+
+      const layer = getLayer(t.active_layer ?? 0);
+      $("live-layer").textContent = layer ? configLabel(layer) : ("配置" + (t.active_layer ?? 0));
+      const at = t.action_type ?? 0;
+      $("live-action").textContent = ACTION[at] || ("类型" + at);
+      $("live-codes").textContent = formatTelemetryCodes(t);
+      $("live-duration").textContent = (t.duration_ms || 0) + " ms";
       $("telemetry").textContent = JSON.stringify(t, null, 2);
     } catch (e) { /* ignore */ }
+  }
+
+  function formatTelemetryCodes(t) {
+    const mod = t.modifier || 0, key = t.key_code || 0, cons = t.consumer_code || 0;
+    const parts = [];
+    if (mod) parts.push("mod 0x" + mod.toString(16));
+    if (key) parts.push("key 0x" + key.toString(16));
+    if (cons) parts.push("cons 0x" + cons.toString(16));
+    return parts.length ? parts.join(" ") : "—";
   }
 
   async function refreshBleInfo() {
@@ -195,10 +230,15 @@
 
   /* ------------------------- keymap ------------------------- */
 
-  async function loadKeymap() {
+  async function loadKeymap(preserveLayer) {
     try {
       keymap = await dev.getKeymap();
-      activeLayer = keymap.active_layer || 0;
+      deviceActiveLayer = keymap.active_layer || 0;
+      if (!preserveLayer || !(keymap.layers || []).some((l) => l.id === activeLayer)) {
+        activeLayer = deviceActiveLayer;
+      }
+      dirty = false;
+      updateDirtyIndicator();
       renderLayerTabs();
       renderKeymapGrid();
       $("raw-json").value = JSON.stringify(keymap, null, 2);
@@ -221,10 +261,11 @@
         return;
       }
       toast("按键配置已保存");
+      dirty = false;
       if (dev.isConnected()) {
         try { await dev.setLayer(activeLayer); } catch (e) { /* ignore */ }
       }
-      await loadKeymap();
+      await loadKeymap(true);
     } catch (e) {
       console.error(e);
       toast("保存失败: " + e.message, true);
@@ -232,6 +273,7 @@
       savingKeymap = false;
       btn.disabled = false;
       btn.textContent = oldText;
+      updateDirtyIndicator();
     }
   }
 
@@ -276,15 +318,23 @@
     host.innerHTML = "";
     (keymap.layers || []).forEach((layer) => {
       const btn = document.createElement("button");
-      btn.className = "layer-tab" + (layer.id === activeLayer ? " active" : "");
+      let cls = "layer-tab";
+      if (layer.id === activeLayer) cls += " active";
+      if (layer.id === deviceActiveLayer) cls += " device-active";
+      btn.className = cls;
       btn.textContent = configLabel(layer);
+      btn.title = layer.id === deviceActiveLayer ? "设备当前生效的配置" : "点击切换到该配置";
       btn.onclick = () => {
         activeLayer = layer.id;
         renderLayerTabs();
         renderKeymapGrid();
         // Selecting a configuration also makes it active on the device.
         if (dev.isConnected()) {
-          dev.setLayer(layer.id).then(refreshStatus).catch(() => {});
+          dev.setLayer(layer.id).then(() => {
+            deviceActiveLayer = layer.id;
+            renderLayerTabs();
+            refreshStatus();
+          }).catch(() => {});
         }
       };
       host.appendChild(btn);
@@ -320,10 +370,22 @@
   }
   function keyAction(layer, vk) {
     const b = getBinding(layer, vk);
-    return b ? (actionSummary(b, "click") || "未配置") : "未配置";
+    if (!b) return "未配置";
+    const parts = [];
+    const c = actionSummary(b, "click");
+    const l = actionSummary(b, "long");
+    const d = actionSummary(b, "double");
+    if (c) parts.push(c);
+    if (l) parts.push("长按 " + l);
+    if (d) parts.push("双击 " + d);
+    if (b.has_repeat) parts.push("连发");
+    return parts.length ? parts.join(" · ") : "未配置";
   }
   function bindBtn(btn, layer, vk) {
     const pk = pkOf(vk);
+    const b = getBinding(layer, vk);
+    btn.dataset.vk = String(vk);
+    btn.classList.toggle("key-configured", !!(b && (b.has_click || b.has_long || b.has_double)));
     const show = () => {
       const el = $("remote-info");
       if (el) el.innerHTML = `<b>${pk.name}</b> · ${keyAction(layer, vk)}`;
@@ -412,6 +474,91 @@
   /* ------------------------- action editor ------------------------- */
 
   let editingKey = null;
+  let editingGesture = 0;   // 0=click 1=long 2=double 3=repeat
+
+  // One-click presets applied to the currently selected gesture.
+  const PRESETS = [
+    { g: "键盘", items: [
+      { label: "Enter", type: 1, key: 0x28 },
+      { label: "Esc", type: 1, key: 0x29 },
+      { label: "Tab", type: 1, key: 0x2b },
+      { label: "空格", type: 1, key: 0x2c },
+      { label: "↑", type: 1, key: 0x52 },
+      { label: "↓", type: 1, key: 0x51 },
+      { label: "←", type: 1, key: 0x50 },
+      { label: "→", type: 1, key: 0x4f },
+      { label: "Win+D", type: 1, key: 0x07, mod: 0x08 },
+    ]},
+    { g: "多媒体", items: [
+      { label: "返回", type: 4, cons: 0x224 },
+      { label: "主页", type: 4, cons: 0x223 },
+      { label: "音量+", type: 4, cons: 0xe9 },
+      { label: "音量-", type: 4, cons: 0xea },
+      { label: "静音", type: 4, cons: 0xe2 },
+      { label: "播放/暂停", type: 4, cons: 0xcd },
+      { label: "上一曲", type: 4, cons: 0xb6 },
+      { label: "下一曲", type: 4, cons: 0xb5 },
+    ]},
+    { g: "鼠标", items: [
+      { label: "左键", type: 11, mouseBtn: 1 },
+      { label: "右键", type: 11, mouseBtn: 2 },
+      { label: "中键", type: 11, mouseBtn: 4 },
+      { label: "移动↑", type: 14, dir: "up", speed: 8 },
+      { label: "移动↓", type: 14, dir: "down", speed: 8 },
+      { label: "移动←", type: 14, dir: "left", speed: 8 },
+      { label: "移动→", type: 14, dir: "right", speed: 8 },
+      { label: "滚轮↑", type: 15, wheel: 3 },
+      { label: "滚轮↓", type: 15, wheel: -3 },
+    ]},
+  ];
+
+  function setGesture(idx) {
+    editingGesture = idx;
+    document.querySelectorAll("#gesture-tabs .gesture-tab").forEach((t) => {
+      t.classList.toggle("active", parseInt(t.dataset.gesture, 10) === idx);
+    });
+    document.querySelectorAll("#modal-body .action-block").forEach((blk, i) => {
+      blk.classList.toggle("hidden", i !== idx);
+    });
+    const bar = $("preset-bar");
+    if (bar) bar.classList.toggle("hidden", idx === 3);
+  }
+
+  function renderPresets() {
+    const host = $("preset-bar");
+    if (!host) return;
+    host.innerHTML = PRESETS.map((grp) =>
+      `<div class="preset-group"><span class="preset-label">${grp.g}</span>` +
+      grp.items.map((p, i) => `<button type="button" class="preset" data-g="${grp.g}" data-i="${i}">${p.label}</button>`).join("") +
+      `</div>`
+    ).join("");
+    host.querySelectorAll(".preset").forEach((btn) => {
+      const grp = PRESETS.find((g) => g.g === btn.dataset.g);
+      const p = grp && grp.items[parseInt(btn.dataset.i, 10)];
+      if (p) btn.onclick = () => applyPreset(p);
+    });
+  }
+
+  function applyPreset(p) {
+    const block = document.querySelectorAll("#modal-body .action-block")[editingGesture];
+    if (!block) return;
+    const set = (sel, val) => { const el = block.querySelector(sel); if (el) el.value = String(val); };
+    set(".f-type", p.type);
+    if (p.key != null) { set(".f-key", p.key); set(".f-keynum", p.key); }
+    if (p.cons != null) { set(".f-cons", p.cons); set(".f-consnum", p.cons); }
+    if (p.layer != null) set("input.f-layer", p.layer);
+    if (p.mouseBtn != null) set(".f-mousebtn", p.mouseBtn);
+    if (p.dir != null) { set(".f-move-dir", p.dir); set(".f-move-speed", p.speed ?? 8); }
+    if (p.wheel != null) set("input.f-wheel", p.wheel);
+    block.querySelectorAll(".f-mod").forEach((c) => {
+      c.checked = p.mod != null && (parseInt(c.value, 10) & p.mod) !== 0;
+    });
+    if (editingGesture !== 0) {
+      const has = block.querySelector(".f-has");
+      if (has) has.checked = true;
+    }
+    refreshFieldVisibility();
+  }
 
   function actionTypeOptions(selected) {
     const allowed = [0, 1, 2, 4, 7, 9, 10, 11, 12, 13, 14, 15];
@@ -546,10 +693,18 @@
 
   function openEditor(pk) {
     editingKey = pk;
+    editingGesture = 0;
     const layer = getLayer(activeLayer);
     const b = getBinding(layer, pk.vk) || { source_vk: pk.vk };
-    $("modal-title").textContent = `${pk.name} (配置 ${activeLayer})`;
+    $("modal-title").textContent = `${pk.name} · ${configLabel(getLayer(activeLayer))}`;
     $("modal-body").innerHTML =
+      `<div class="gesture-tabs" id="gesture-tabs">
+         <button type="button" class="gesture-tab" data-gesture="0">单击</button>
+         <button type="button" class="gesture-tab" data-gesture="1">长按</button>
+         <button type="button" class="gesture-tab" data-gesture="2">双击</button>
+         <button type="button" class="gesture-tab" data-gesture="3">连发</button>
+       </div>
+       <div class="preset-bar" id="preset-bar"></div>` +
       renderActionFields("click", b) +
       renderActionFields("long", b) +
       renderActionFields("double", b) +
@@ -560,8 +715,15 @@
            <div class="field"><label>连发间隔 (ms)</label><input type="number" id="rep-interval" value="${b.repeat_interval_ms ?? 70}"/></div>
          </div>
        </div>`;
+    const configured = [!!b.has_click, !!b.has_long, !!b.has_double, !!b.has_repeat];
+    document.querySelectorAll("#gesture-tabs .gesture-tab").forEach((t, i) => {
+      if (configured[i]) t.classList.add("has-action");
+      t.onclick = () => setGesture(parseInt(t.dataset.gesture, 10));
+    });
+    renderPresets();
     $("modal").classList.remove("hidden");
     refreshFieldVisibility();
+    setGesture(0);
   }
 
   function applyEditor() {
@@ -624,6 +786,8 @@
     }
     layer.bindings = layer.bindings.filter((x) => x.has_click || x.has_long || x.has_double);
     $("modal").classList.add("hidden");
+    dirty = true;
+    updateDirtyIndicator();
     renderKeymapGrid();
     toast("已修改，点击「保存到设备」生效");
   }
@@ -647,6 +811,7 @@
     statusTimer = logTimer = telemetryTimer = null;
     const nameEl = $("live-key-name");
     if (nameEl) { nameEl.textContent = "—"; nameEl.classList.remove("active"); }
+    document.querySelectorAll(".remote .pressed").forEach((el) => el.classList.remove("pressed"));
   }
 
   /* ------------------------- wiring ------------------------- */
@@ -674,7 +839,10 @@
 
     $("btn-connect").onclick = connect;
     $("btn-disconnect").onclick = disconnect;
-    $("btn-keymap-refresh").onclick = loadKeymap;
+    $("btn-keymap-refresh").onclick = () => {
+      if (dirty && !confirm("有未保存的修改，确定从设备重新读取？")) return;
+      loadKeymap();
+    };
     $("btn-keymap-save").onclick = saveKeymap;
     $("btn-keymap-reset").onclick = resetKeymap;
     $("btn-keymap-activate").onclick = async () => {
@@ -706,7 +874,7 @@
       if (!confirm("确定恢复出厂设置？将清除所有配置与绑定。")) return;
       try { await dev.factoryReset(); toast("已恢复出厂，设备重启中..."); } catch (e) { toast(e.message, true); }
     };
-    $("btn-json-load").onclick = loadKeymap;
+    $("btn-json-load").onclick = () => loadKeymap();
     $("btn-json-apply").onclick = async () => {
       try {
         keymap = JSON.parse($("raw-json").value);
@@ -720,6 +888,15 @@
 
     $("modal-close").onclick = $("modal-cancel").onclick = () => $("modal").classList.add("hidden");
     $("modal-apply").onclick = applyEditor;
+    $("modal-clear").onclick = () => {
+      const layer = getLayer(activeLayer);
+      if (layer) layer.bindings = (layer.bindings || []).filter((x) => x.source_vk !== editingKey.vk);
+      $("modal").classList.add("hidden");
+      dirty = true;
+      updateDirtyIndicator();
+      renderKeymapGrid();
+      toast("已清除该按键，点击「保存到设备」生效");
+    };
     document.addEventListener("change", (e) => {
       if (e.target.classList.contains("f-type")) refreshFieldVisibility();
       if (e.target.classList.contains("f-key")) {

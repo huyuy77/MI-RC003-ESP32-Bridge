@@ -1,4 +1,4 @@
-# MIRC003-bridge-esp32
+# MI-RC003-ESP32-Bridge
 
 基于 **ESP-IDF** 的 ESP32-S3 固件：将 **小米蓝牙遥控器 2 Pro（RC003）** 的按键与语音通过
 USB 复合设备转发到 Windows，并使用 **浏览器 WebUSB** 完成设备配置。
@@ -121,7 +121,7 @@ monitor.bat COM5 :: 串口监视
 配置页面位于 [`webusb-config/`](./webusb-config)，是一个**纯静态站点**，不依赖任何后端。
 
 > **二次开发**：设备通信已封装为无依赖的浏览器库
-> [`webusb-config/assets/mirc003.js`](./webusb-config/assets/mirc003.js)，
+> [`webusb-config/assets/mi-rc003.js`](./webusb-config/assets/mi-rc003.js)，
 > 第三方可以只写自己的 HTML/JS 调用该 API，完全替换默认 UI。
 > 完整 API 参考见 [`webusb-config/doc.md`](./webusb-config/doc.md)。
 
@@ -135,7 +135,7 @@ python -m http.server 8000
 ```
 
 浏览器打开 <http://localhost:8000/>，点击「连接设备」，在弹出的设备列表中选择
-`MIRC003 Remote Bridge`。
+`MI-RC003 Remote Bridge`。
 
 > 固件 BOS 描述符中的着陆页地址默认为 `http://localhost:8000/`，
 > 可在 `main/version.h` 的 `WEBUSB_LANDING_URL` / `WEBUSB_LANDING_SCHEME` 中修改。
@@ -217,7 +217,7 @@ python -m http.server 8000
 ## 8. 项目结构
 
 ```text
-MIRC003-bridge-esp32/
+MI-RC003-ESP32-Bridge/
 ├── CMakeLists.txt
 ├── sdkconfig.defaults
 ├── partitions.csv
@@ -267,7 +267,7 @@ MIRC003-bridge-esp32/
 * 必须使用桌面版 Chrome / Edge；移动端浏览器不支持 WebUSB。
 * 页面必须运行在 `https://` 或 `http://localhost`（安全上下文）。
 * 关闭可能占用该设备的其他程序（如串口助手、Zadig）。
-* 首次使用需在弹窗中选择 `MIRC003 Remote Bridge`。
+* 首次使用需在弹窗中选择 `MI-RC003 Remote Bridge`。
 
 ### 修改按键映射后页面无响应 / 不生效
 
@@ -283,7 +283,7 @@ MIRC003-bridge-esp32/
 
 ### 语音键没有声音 / 输入法无法采集
 
-在 Windows 声音设置中，把输入设备切换为 `MIRC003 Microphone`（UAC 1.0 麦克风），
+在 Windows 声音设置中，把输入设备切换为 `MI-RC003 Microphone`（UAC 1.0 麦克风），
 并确认输入法的语音热键与遥控器语音键配置一致（默认 `右Alt + ,`）。
 
 ---

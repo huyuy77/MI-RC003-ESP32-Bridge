@@ -1,11 +1,11 @@
 /*
- * MIRC003 Bridge WebUSB client library
+ * MI-RC003 Bridge WebUSB client library
  * ------------------------------------
  * A small, dependency-free wrapper around the firmware's WebUSB vendor
- * protocol. Include this file and use the global `Mirc003` class to talk to
+ * protocol. Include this file and use the global `MiRC003` class to talk to
  * the device from any custom HTML page.
  *
- *   const dev = new Mirc003();
+ *   const dev = new MiRC003();
  *   await dev.connect();                 // user picks the device
  *   const s = await dev.status();
  *   await dev.saveKeymap(keymap);
@@ -119,7 +119,7 @@
    *   vendorId, productId  - USB IDs to match (defaults 0x303a / 0x8304)
    *   saveChunk            - bytes per KEYMAP_DATA chunk (default 64)
    */
-  function Mirc003(options) {
+  function MiRC003(options) {
     options = options || {};
     this.vendorId = options.vendorId != null ? options.vendorId : DEFAULT_VID;
     this.productId = options.productId != null ? options.productId : DEFAULT_PID;
@@ -137,19 +137,19 @@
   /* ------------------------- events ------------------------- */
 
   /** Subscribe to an event: "connect" | "disconnect" | "error". */
-  Mirc003.prototype.on = function (event, cb) {
+  MiRC003.prototype.on = function (event, cb) {
     (this._handlers[event] = this._handlers[event] || []).push(cb);
     return this;
   };
 
   /** Remove a previously added handler. */
-  Mirc003.prototype.off = function (event, cb) {
+  MiRC003.prototype.off = function (event, cb) {
     var list = this._handlers[event];
     if (list) this._handlers[event] = list.filter(function (f) { return f !== cb; });
     return this;
   };
 
-  Mirc003.prototype._emit = function (event, data) {
+  MiRC003.prototype._emit = function (event, data) {
     var list = this._handlers[event] || [];
     for (var i = 0; i < list.length; i++) {
       try { list[i](data); } catch (e) { console.error(e); }
@@ -159,13 +159,13 @@
   /* ------------------------- connection ------------------------- */
 
   /** True while a device is open and claimed. */
-  Mirc003.prototype.isConnected = function () { return !!this._device; };
+  MiRC003.prototype.isConnected = function () { return !!this._device; };
 
   /**
    * Ask the user to pick the device (WebUSB permission prompt), open it and
    * claim the vendor interface. Resolves with this client.
    */
-  Mirc003.prototype.connect = function () {
+  MiRC003.prototype.connect = function () {
     var self = this;
     if (!global.navigator || !navigator.usb) {
       return Promise.reject(new Error("当前浏览器不支持 WebUSB"));
@@ -223,7 +223,7 @@
   };
 
   /** Close the device (no-op if not connected). */
-  Mirc003.prototype.disconnect = function () {
+  MiRC003.prototype.disconnect = function () {
     var self = this;
     var dev = this._device;
     this._device = null; this._out = null; this._in = null; this._rx = new Uint8Array(0);
@@ -235,7 +235,7 @@
 
   /* ------------------------- low level ------------------------- */
 
-  Mirc003.prototype._buildFrame = function (cmd, payload) {
+  MiRC003.prototype._buildFrame = function (cmd, payload) {
     var len = payload ? payload.length : 0;
     var frame = new Uint8Array(HEADER_LEN + len);
     frame[0] = SOF0; frame[1] = SOF1; frame[2] = cmd; frame[3] = 0;
@@ -244,7 +244,7 @@
     return frame;
   };
 
-  Mirc003.prototype._readFrame = function () {
+  MiRC003.prototype._readFrame = function () {
     var self = this;
     function pump() {
       if (self._rx.length >= HEADER_LEN) {
@@ -284,7 +284,7 @@
    * @param {Uint8Array|null} rawBytes raw payload (takes precedence)
    * @returns {Promise<object>} parsed JSON response
    */
-  Mirc003.prototype.send = function (cmd, payloadObj, rawBytes) {
+  MiRC003.prototype.send = function (cmd, payloadObj, rawBytes) {
     var self = this;
     function run() { return self._send(cmd, payloadObj, rawBytes); }
     var p = this._chain.then(run, run);
@@ -292,7 +292,7 @@
     return p;
   };
 
-  Mirc003.prototype._send = function (cmd, payloadObj, rawBytes) {
+  MiRC003.prototype._send = function (cmd, payloadObj, rawBytes) {
     if (!this._device || !this._out) return Promise.reject(new Error("设备未连接"));
     var payload = rawBytes
       ? rawBytes
@@ -307,19 +307,19 @@
 
   /* ------------------------- high level API ------------------------- */
 
-  Mirc003.prototype.deviceInfo = function () { return this.send(CMD.DEVICE_INFO); };
-  Mirc003.prototype.status = function () { return this.send(CMD.STATUS); };
-  Mirc003.prototype.telemetry = function () { return this.send(CMD.KEYMAP_TELEMETRY); };
-  Mirc003.prototype.getKeymap = function () { return this.send(CMD.KEYMAP_GET); };
-  Mirc003.prototype.resetKeymap = function () { return this.send(CMD.KEYMAP_RESET); };
+  MiRC003.prototype.deviceInfo = function () { return this.send(CMD.DEVICE_INFO); };
+  MiRC003.prototype.status = function () { return this.send(CMD.STATUS); };
+  MiRC003.prototype.telemetry = function () { return this.send(CMD.KEYMAP_TELEMETRY); };
+  MiRC003.prototype.getKeymap = function () { return this.send(CMD.KEYMAP_GET); };
+  MiRC003.prototype.resetKeymap = function () { return this.send(CMD.KEYMAP_RESET); };
 
   /** Switch the device's active configuration (layer) by index. */
-  Mirc003.prototype.setLayer = function (layer) {
+  MiRC003.prototype.setLayer = function (layer) {
     return this.send(CMD.SET_LAYER, { layer: layer });
   };
 
   /** Persist a keymap object (the same shape returned by getKeymap()). */
-  Mirc003.prototype.saveKeymap = function (keymap) {
+  MiRC003.prototype.saveKeymap = function (keymap) {
     var self = this;
     var json = new TextEncoder().encode(JSON.stringify(keymap));
     var step = this.saveChunk;
@@ -334,26 +334,26 @@
     });
   };
 
-  Mirc003.prototype.bleScan = function () { return this.send(CMD.BLE_SCAN); };
-  Mirc003.prototype.bleConnect = function (target) { return this.send(CMD.BLE_CONNECT, target); };
-  Mirc003.prototype.bleUnpair = function () { return this.send(CMD.BLE_UNPAIR); };
-  Mirc003.prototype.bleInfo = function () { return this.send(CMD.BLE_INFO); };
-  Mirc003.prototype.bleReconnect = function () { return this.send(CMD.BLE_RECONNECT); };
+  MiRC003.prototype.bleScan = function () { return this.send(CMD.BLE_SCAN); };
+  MiRC003.prototype.bleConnect = function (target) { return this.send(CMD.BLE_CONNECT, target); };
+  MiRC003.prototype.bleUnpair = function () { return this.send(CMD.BLE_UNPAIR); };
+  MiRC003.prototype.bleInfo = function () { return this.send(CMD.BLE_INFO); };
+  MiRC003.prototype.bleReconnect = function () { return this.send(CMD.BLE_RECONNECT); };
 
-  Mirc003.prototype.getLogs = function () { return this.send(CMD.LOGS_GET); };
-  Mirc003.prototype.clearLogs = function () { return this.send(CMD.LOGS_CLEAR); };
+  MiRC003.prototype.getLogs = function () { return this.send(CMD.LOGS_GET); };
+  MiRC003.prototype.clearLogs = function () { return this.send(CMD.LOGS_CLEAR); };
 
-  Mirc003.prototype.restart = function () { return this.send(CMD.SYSTEM_RESTART); };
-  Mirc003.prototype.factoryReset = function () { return this.send(CMD.NVS_RESET); };
+  MiRC003.prototype.restart = function () { return this.send(CMD.SYSTEM_RESTART); };
+  MiRC003.prototype.factoryReset = function () { return this.send(CMD.NVS_RESET); };
 
   /* ------------------------- statics ------------------------- */
-  Mirc003.CMD = CMD;
-  Mirc003.ACTION = ACTION;
-  Mirc003.PHYSICAL_KEYS = PHYSICAL_KEYS;
-  Mirc003.MOD_BITS = MOD_BITS;
-  Mirc003.MOUSE_BUTTONS = MOUSE_BUTTONS;
-  Mirc003.HID_GROUPS = HID_GROUPS;
-  Mirc003.CONSUMER_GROUPS = CONSUMER_GROUPS;
+  MiRC003.CMD = CMD;
+  MiRC003.ACTION = ACTION;
+  MiRC003.PHYSICAL_KEYS = PHYSICAL_KEYS;
+  MiRC003.MOD_BITS = MOD_BITS;
+  MiRC003.MOUSE_BUTTONS = MOUSE_BUTTONS;
+  MiRC003.HID_GROUPS = HID_GROUPS;
+  MiRC003.CONSUMER_GROUPS = CONSUMER_GROUPS;
 
-  global.Mirc003 = Mirc003;
+  global.MiRC003 = MiRC003;
 })(window);

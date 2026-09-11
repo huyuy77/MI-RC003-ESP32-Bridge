@@ -452,6 +452,142 @@ textarea.raw { min-height: 220px; font-family: "SF Mono", "Cascadia Code", Menlo
 @keyframes toast-in { from { opacity: 0; transform: translate(-50%, 8px); } to { opacity: 1; } }
 .toast.error { background: var(--red); }
 
+/* ----------------------------- keymap usability ----------------------------- */
+/* Config tab that is currently active on the device. */
+.layer-tab.device-active { border-color: var(--green); color: var(--text); }
+.layer-tab.device-active::before {
+  content: "";
+  display: inline-block;
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: var(--green);
+  margin-right: 7px;
+  vertical-align: middle;
+}
+.layer-tab.active.device-active { color: #fff; }
+
+/* Keys that have a mapping in the current configuration. */
+.utility, .round, .dp.ok, .volume button { position: relative; }
+.utility.key-configured::after,
+.round.key-configured::after,
+.dp.ok.key-configured::after,
+.volume button.key-configured::after {
+  content: "";
+  position: absolute;
+  top: 2px; right: 2px;
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.9);
+  pointer-events: none;
+}
+.arc.key-configured { color: var(--accent); }
+.arc.key-configured:hover { color: var(--accent-hover); }
+
+/* Unsaved-changes badge on the save button. */
+.btn.dirty { position: relative; }
+.btn.dirty::after {
+  content: "";
+  position: absolute;
+  top: -3px; right: -3px;
+  width: 9px; height: 9px;
+  border-radius: 50%;
+  background: var(--orange);
+  box-shadow: 0 0 0 2px #fff;
+}
+
+/* ----------------------------- live key status ----------------------------- */
+.live-meta { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 14px; }
+.live-meta .chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 980px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--text-3);
+}
+.live-meta .chip b { color: var(--text); font-weight: 600; }
+.live-raw { margin: 0; }
+.live-raw summary { cursor: pointer; color: var(--text-2); font-size: 13px; padding: 4px 0; }
+.live-raw[open] summary { margin-bottom: 10px; }
+
+.live-key .live-value.active { animation: live-pulse 0.5s ease; }
+@keyframes live-pulse {
+  0% { transform: scale(1); }
+  45% { transform: scale(1.14); }
+  100% { transform: scale(1); }
+}
+
+/* Pressed key highlight on the remote image. */
+.utility.pressed, .round.pressed, .volume button.pressed, .dp.ok.pressed {
+  background: var(--green);
+  border-color: var(--green);
+  color: #fff;
+}
+.arc.pressed { color: var(--green); }
+
+/* ----------------------------- key editor ----------------------------- */
+.gesture-tabs {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 11px;
+  background: #e9e9ec;
+  margin-bottom: 14px;
+}
+.gesture-tab {
+  border: none;
+  background: transparent;
+  color: var(--text);
+  padding: 7px 18px;
+  border-radius: 9px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  font-family: inherit;
+  transition: background 0.15s ease, box-shadow 0.15s ease;
+}
+.gesture-tab.active { background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12); }
+.gesture-tab.has-action::after {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+.preset-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
+  padding: 12px 14px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+.preset-group { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.preset-label { color: var(--text-3); font-size: 12px; min-width: 42px; }
+.preset {
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 5px 11px;
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease, transform 0.1s ease;
+}
+.preset:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.preset:active { transform: scale(0.95); }
+
 /* ----------------------------- responsive ----------------------------- */
 @media (max-width: 640px) {
   .topbar { padding: 12px 16px; }
