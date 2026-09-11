@@ -32,6 +32,14 @@ python -m http.server 8000
 #define WEBUSB_LANDING_SCHEME  1   // 0 = http, 1 = https
 ```
 
+## 在线烧录页面
+
+`flash/` 子目录是基于 [ESP Web Tools](https://esphome.github.io/esp-web-tools/) 的**浏览器固件烧录页**，
+部署后访问 `https://<站点>/flash/`，用桌面版 Chrome / Edge 即可直接烧录固件（Web Serial）。
+
+页面文件：`flash/index.html`、`flash/manifest.json`、`flash/firmware/merged-flash.bin`。
+其中 `manifest.json` 与固件由根目录 `package-release.bat` 自动生成，请勿手工编辑。
+
 ## 通信协议
 
 请求与响应均使用如下帧格式（详见仓库根目录 README）：

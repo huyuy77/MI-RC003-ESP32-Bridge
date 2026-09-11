@@ -15,3 +15,7 @@ Thumbs.db
 
 # Local WebUSB test server artifacts
 webusb-config/.cache/
+
+# Release packaging output
+dist/
+.cache/

@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#fbfbfd" />
+  <title>MI-RC003 Bridge - 固件在线烧录</title>
+  <script type="module" src="https://unpkg.com/esp-web-tools@10.4.0/dist/web/install-button.js?module"></script>
+  <style>
+    :root {
+      --bg: #fbfbfd;
+      --fg: #1d1d1f;
+      --muted: #6e6e73;
+      --card: #ffffff;
+      --line: #e5e5ea;
+      --brand: #0a84ff;
+      --ok: #30d158;
+      --warn: #ff9f0a;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--fg);
+      font: 15px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 48px 16px 64px;
+    }
+    .logo {
+      font-weight: 800;
+      letter-spacing: .5px;
+      font-size: 22px;
+      color: #111;
+    }
+    .logo span { color: var(--brand); }
+    h1 { font-size: 24px; margin: 12px 0 4px; text-align: center; }
+    .sub { color: var(--muted); text-align: center; margin: 0 0 28px; }
+    .card {
+      width: 100%;
+      max-width: 620px;
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 24px;
+      box-shadow: 0 1px 2px rgba(0,0,0,.04), 0 12px 32px rgba(0,0,0,.05);
+      margin-bottom: 18px;
+    }
+    .center { text-align: center; }
+    esp-web-install-button { display: inline-block; margin: 8px 0 4px; }
+    esp-web-install-button button,
+    esp-web-install-button [slot="activate"] {
+      background: var(--brand);
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      padding: 12px 28px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    esp-web-install-button button:hover { filter: brightness(1.05); }
+    .steps { margin: 0; padding-left: 20px; color: #333; }
+    .steps li { margin: 6px 0; }
+    .note {
+      font-size: 13px;
+      color: var(--muted);
+      border-top: 1px solid var(--line);
+      margin-top: 16px;
+      padding-top: 14px;
+    }
+    code {
+      background: #f2f2f7;
+      padding: 2px 6px;
+      border-radius: 6px;
+      font-size: 13px;
+    }
+    a { color: var(--brand); }
+    .badge {
+      display: inline-block;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--warn);
+      background: #fff4e5;
+      border-radius: 999px;
+      padding: 2px 10px;
+      margin-left: 6px;
+    }
+    #fw-version { color: var(--ok); font-weight: 600; }
+  </style>
+</head>
+<body>
+  <div class="logo">MIRC<span>003</span></div>
+  <h1>固件在线烧录</h1>
+  <p class="sub">小米蓝牙遥控器 2 Pro (RC003) · ESP32-S3 · <span id="fw-version">读取中…</span></p>
+
+  <div class="card center">
+    <esp-web-install-button id="installer" manifest="manifest.json">
+      <button slot="activate">连接设备并烧录</button>
+      <span slot="unsupported">
+        当前浏览器不支持 Web Serial。<br />
+        请使用 <strong>桌面版 Chrome / Edge</strong> 打开本页面。
+      </span>
+      <span slot="not-allowed">
+        本页面必须通过 <code>https://</code> 或 <code>http://localhost</code> 访问。
+      </span>
+    </esp-web-install-button>
+    <div class="note">首次烧录会询问是否擦除 Flash，选择“擦除”即可（会清除已有配置与蓝牙配对）。</div>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-top:0">烧录步骤</h3>
+    <ol class="steps">
+      <li>用 USB 数据线把 ESP32-S3 开发板连接到电脑（建议使用 <strong>原生 USB/OTG</strong> 口）。</li>
+      <li>点击上方 <strong>“连接设备并烧录”</strong>，在弹出的串口列表中选择开发板。</li>
+      <li>等待进度完成，设备会自动重启。</li>
+      <li>烧录完成后，前往 <a href="../">配置中心</a> 连接设备进行按键与蓝牙设置。</li>
+    </ol>
+    <div class="note">
+      若无法识别设备：按住 <code>BOOT</code> 键 → 点按一下 <code>RST</code> → 松开 <code>BOOT</code>，
+      再点击烧录按钮。仍然失败请检查 USB 数据线（需支持数据传输）与串口驱动。
+    </div>
+  </div>
+
+  <script>
+    fetch('manifest.json', { cache: 'no-store' })
+      .then(r => r.json())
+      .then(m => {
+        const el = document.getElementById('fw-version');
+        el.textContent = (m.name || '固件') + ' v' + (m.version || '');
+      })
+      .catch(() => { document.getElementById('fw-version').textContent = '固件'; });
+  </script>
+</body>
+</html>

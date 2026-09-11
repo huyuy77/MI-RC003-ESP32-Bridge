@@ -109,17 +109,47 @@ idf.py build
 
 ### 4.3 烧录与监视
 
+开发时可直接使用 ESP-IDF：
+
 ```powershell
 idf.py -p COMx flash monitor
 ```
 
-也可以直接运行仓库根目录脚本（Windows）：
+### 4.4 一键生成烧录固件
+
+`build-firmware.bat` / `tools/build-firmware.ps1` 会**编译固件并同时生成两份烧录固件**：
+Windows 免安装烧录工具用的 `build/merged-flash.bin`，以及网页烧录用的
+`webusb-config/flash/firmware/merged-flash.bin`（并自动更新 `manifest.json`）。
 
 ```bat
-build.bat        :: 编译
-flash.bat COM5   :: 烧录（默认自动探测串口）
-monitor.bat COM5 :: 串口监视
+build-firmware.bat            :: 编译 + 生成两份固件
+build-firmware.bat -NoBuild   :: 跳过编译，直接用现有 build 产物生成
 ```
+
+### 4.5 打包 Windows 免安装烧录工具
+
+`package-release.bat` / `tools/package-release.ps1` 将上一步生成的固件打包成**面向最终用户**的发布产物
+（需先运行 `build-firmware.bat`）：
+
+```bat
+package-release.bat                 :: 打包
+package-release.bat -Version 1.1.0  :: 指定版本号（默认读取 main/version.h）
+```
+
+执行后 `dist/` 中只包含 Windows 烧录工具：
+
+| 产物 | 说明 |
+| :--- | :--- |
+| `MI-RC003-Bridge-<版本>-win64/` | **免安装 Windows 烧录包**：内置 `esptool.exe`、合并固件与双击 `flash.bat`，用户**无需 Python / ESP-IDF**，自动探测串口一键烧录 |
+| `MI-RC003-Bridge-<版本>-win64.zip` | 上述目录的压缩包，可直接上传 GitHub Release |
+| `SHA256SUMS.txt` | 发布包的 SHA-256 校验值 |
+
+网页烧录器固定位于 `webusb-config/flash/`（`index.html` + `manifest.json` + `firmware/merged-flash.bin`），
+随配置站点一起部署。提交并推送到 `main` 后 GitHub Pages 会自动部署，用户访问：
+
+**https://ncmro7.github.io/MI-RC003-ESP32-Bridge/flash/**（桌面版 Chrome / Edge 直接在线烧录）
+
+> 最终用户拿到的 Windows 包结构：`flash.bat`、`flash.ps1`、`esptool.exe`、`使用说明.txt`、`firmware/merged-flash.bin`。
 
 ---
 
@@ -228,6 +258,13 @@ MI-RC003-ESP32-Bridge/
 ├── CMakeLists.txt
 ├── sdkconfig.defaults
 ├── partitions.csv
+├── build-firmware.bat                         # 一键生成烧录固件（Windows + 网页）
+├── package-release.bat                        # 打包 Windows 免安装烧录工具
+├── tools/
+│   ├── common.ps1                             # 脚本公共函数
+│   ├── build-firmware.ps1                     # 生成 build/merged-flash.bin 与网页固件
+│   ├── package-release.ps1                    # 打包 dist/ Windows 烧录工具
+│   └── standalone/{flash.bat,flash.ps1}       # 最终用户免安装烧录脚本模板
 ├── main/
 │   ├── main.c                     # 初始化与任务
 │   ├── app_config.h / version.h
@@ -246,12 +283,29 @@ MI-RC003-ESP32-Bridge/
 │   └── log/app_log.*
 └── webusb-config/                 # 浏览器配置站点（静态）
     ├── index.html
-    └── assets/{app.js,style.css}
+    ├── assets/{app.js,style.css}
+    └── flash/                     # 网页固件烧录（ESP Web Tools）
+        ├── index.html
+        ├── manifest.json
+        └── firmware/merged-flash.bin
 ```
 
 ---
 
 ## 9. 常见问题
+
+### 烧录工具检测不到串口
+
+这是最常见的情况，原因通常是**设备正运行固件、原生 USB 口不提供串口**：
+
+* 本项目运行时，原生 USB（OTG）口是 UAC + HID + WebUSB 复合设备，**不会出现 COM 口**。
+  要烧录必须先让芯片进入 ROM 下载模式：
+  1. 按住开发板 `BOOT` 键；
+  2. 点按一下 `RST` 键；
+  3. 松开 `BOOT` 键（此时设备管理器中会出现 `USB 串行设备 / USB JTAG serial debug unit`，并分配 COM 口）。
+* 工具会自动等待最多 90 秒，进入下载模式后即可自动开始烧录。
+* 也可改用板载 **UART 口**（GPIO43/44，需 CH34x / CP210x 驱动），此时无需手动按键即可自动复位烧录。
+* 若设备管理器里根本没有串口，请先安装/更新 USB-UART 驱动。
 
 ### Windows 设备管理器提示「代码 28 / 该设备的驱动程序未被安装」
 
