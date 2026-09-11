@@ -167,6 +167,16 @@ main { max-width: 1000px; margin: 0 auto; padding: 26px 24px 90px; }
 .btn.primary:hover:not(:disabled) { background: var(--accent-hover); }
 .btn.danger { background: #fff0ef; color: var(--red); }
 .btn.danger:hover:not(:disabled) { background: #ffe3e1; }
+a.btn.link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  text-decoration: none;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--accent);
+}
+a.btn.link:hover { background: var(--accent-soft); }
 .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .row.end { justify-content: flex-end; margin-top: 16px; }
 .hint { color: var(--text-2); font-size: 13px; margin: 8px 0 0; line-height: 1.6; }
