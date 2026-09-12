@@ -20,8 +20,17 @@ static const int8_t INDEX_TABLE[8] = {
 void adpcm_init_state(adpcm_state_t *state)
 {
     if (!state) return;
+    // Preserve the configured nibble order across session resets.
+    bool low_first = state->low_nibble_first;
     state->predictor = 0;
     state->step_index = 0;
+    state->low_nibble_first = low_first;
+}
+
+void adpcm_set_nibble_order(adpcm_state_t *state, bool low_nibble_first)
+{
+    if (!state) return;
+    state->low_nibble_first = low_nibble_first;
 }
 
 void adpcm_sync_state(adpcm_state_t *state, int16_t predictor, int8_t step_index)
@@ -68,8 +77,13 @@ size_t adpcm_decode_frame(adpcm_state_t *state, const uint8_t *in_data, size_t i
     size_t sample_idx = 0;
     for (size_t i = 0; i < in_bytes; i++) {
         uint8_t byte_val = in_data[i];
-        out_pcm[sample_idx++] = adpcm_decode_nibble(state, (uint8_t)(byte_val >> 4));
-        out_pcm[sample_idx++] = adpcm_decode_nibble(state, (uint8_t)(byte_val & 0x0F));
+        if (state->low_nibble_first) {
+            out_pcm[sample_idx++] = adpcm_decode_nibble(state, (uint8_t)(byte_val & 0x0F));
+            out_pcm[sample_idx++] = adpcm_decode_nibble(state, (uint8_t)(byte_val >> 4));
+        } else {
+            out_pcm[sample_idx++] = adpcm_decode_nibble(state, (uint8_t)(byte_val >> 4));
+            out_pcm[sample_idx++] = adpcm_decode_nibble(state, (uint8_t)(byte_val & 0x0F));
+        }
     }
 
     return sample_idx;

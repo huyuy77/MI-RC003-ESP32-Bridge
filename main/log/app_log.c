@@ -8,7 +8,7 @@
 #include "freertos/FreeRTOS.h"
 
 #define LOG_LINES        128
-#define LOG_LINE_MAX_LEN 128
+#define LOG_LINE_MAX_LEN 256
 #define LOG_JSON_LINES   64   // newest lines emitted through WebUSB
 
 static char s_log_lines[LOG_LINES][LOG_LINE_MAX_LEN];
@@ -25,7 +25,7 @@ void app_log_init(void)
 
 void app_log(const char *tag, const char *format, ...)
 {
-    char msg[96];
+    char msg[192];
     va_list args;
     va_start(args, format);
     vsnprintf(msg, sizeof(msg), format, args);

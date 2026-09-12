@@ -6,6 +6,7 @@
 #include <string.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "esp_timer.h"
 #include "tusb.h"
 #include "device/usbd_pvt.h"
 
@@ -60,6 +61,35 @@ static void uac_watchdog_task(void *arg)
             stuck_ticks = 0;
             last_count = s_xfer_cb_count;
         }
+    }
+}
+
+// Dedicated 500 Hz (2 ms) feeder. The ESP32-S3 DWC2 even/odd frame-boundary
+// bug means queuing isochronous IN transfers from xfer_cb (or a 1 ms task)
+// makes the controller skip every other frame, halving the effective rate.
+// Submitting from a 2 ms periodic task leaves a full frame of slack so the
+// endpoint is always free, matching the descriptor's bInterval = 2.
+static void uac_stream_task(void *arg)
+{
+    (void)arg;
+    const uint8_t ep = (uint8_t)(s_uac_ep_in | 0x80);
+    TickType_t last_wake = xTaskGetTickCount();
+
+    while (1) {
+        vTaskDelayUntil(&last_wake, pdMS_TO_TICKS(2));
+
+        if (!s_uac_streaming || tud_suspended()) {
+            continue;
+        }
+        if (usbd_edpt_busy(0, ep)) {
+            continue;
+        }
+
+        memset(s_tx_buf, 0, sizeof(s_tx_buf));
+        if (!s_mic_mute) {
+            audio_pipeline_read_for_usb(&g_audio_pipeline, s_tx_buf, 32);
+        }
+        usbd_edpt_xfer(0, ep, (uint8_t *)s_tx_buf, sizeof(s_tx_buf));
     }
 }
 
@@ -166,18 +196,12 @@ static bool uac_driver_control_xfer_cb(uint8_t rhport, uint8_t stage,
 static bool uac_driver_xfer_cb(uint8_t rhport, uint8_t ep_addr,
                                xfer_result_t result, uint32_t xferred_bytes)
 {
-    (void)result;
-    (void)xferred_bytes;
+    (void)rhport; (void)result; (void)xferred_bytes;
 
     if (ep_addr == (uint8_t)(s_uac_ep_in | 0x80)) {
-        if (s_uac_streaming) {
-            memset(s_tx_buf, 0, sizeof(s_tx_buf));
-            if (!s_mic_mute) {
-                audio_pipeline_read_for_usb(&g_audio_pipeline, s_tx_buf, 32);
-            }
-            usbd_edpt_xfer(rhport, ep_addr, (uint8_t *)s_tx_buf, sizeof(s_tx_buf));
-            s_xfer_cb_count++;
-        }
+        // Data is submitted from uac_stream_task(); this callback only feeds
+        // the watchdog liveness counter.
+        s_xfer_cb_count++;
         return true;
     }
     return true;
@@ -208,6 +232,7 @@ bool uac_microphone_init(void)
     if (s_uac_initialized) return true;
 
     xTaskCreatePinnedToCore(uac_watchdog_task, "uac_wdg", 3072, NULL, 5, NULL, TASK_CORE_USB);
+    xTaskCreatePinnedToCore(uac_stream_task, "uac_stream", 3072, NULL, 6, NULL, TASK_CORE_USB);
 
     s_uac_initialized = true;
     app_log("UAC", "UAC 1.0 microphone class driver registered (EP %02X IN)", USB_EP_UAC_IN);

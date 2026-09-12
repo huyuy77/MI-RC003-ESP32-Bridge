@@ -49,6 +49,7 @@ static const ble_uuid16_t s_uuid_hid_proto_mode = BLE_UUID16_INIT(0x2A4E);
 static const ble_uuid16_t s_uuid_hid_ctrl_point = BLE_UUID16_INIT(0x2A4C);
 static const ble_uuid16_t s_uuid_batt_level = BLE_UUID16_INIT(0x2A19);
 static const ble_uuid16_t s_uuid_batt_status = BLE_UUID16_INIT(0x2BED);
+static const ble_uuid16_t s_uuid_model_number = BLE_UUID16_INIT(0x2A24);
 
 // ===========================================================================
 // State
@@ -68,6 +69,8 @@ static uint16_t s_hid_proto_chr = 0;
 static uint16_t s_hid_ctrl_chr = 0;
 static uint16_t s_batt_level_chr = 0;
 static uint16_t s_batt_status_chr = 0;
+static uint16_t s_model_chr = 0;
+static bool     s_model_read = false;
 static int      s_battery_level = -1;
 static uint32_t s_battery_last_ms = 0;
 static uint16_t s_atvv_start = 0, s_atvv_end = 0;
@@ -156,6 +159,7 @@ static init_phase_t s_phase = PHASE_IDLE;
 static void run_next_op(void);
 static uint16_t cccd_lookup(uint16_t chr_val_handle);
 static void read_battery(void);
+static void read_model_number(void);
 
 static int write_cb(uint16_t conn_handle, const struct ble_gatt_error *error,
                     struct ble_gatt_attr *attr, void *arg)
@@ -228,7 +232,7 @@ static void run_next_op(void)
             s_state = BLE_STATE_CONNECTED;
             led_indicator_set(LED_STATE_CONNECTED);
             app_log("BLE", "Remote ready: HOGP + ATVV initialized");
-            read_battery();
+            read_model_number();
         }
         return;
     }
@@ -247,6 +251,7 @@ static void run_next_op(void)
 #define MAX_ALL_CHRS   64
 static uint16_t s_cccd_handles[MAX_CCCDS];
 static int s_cccd_count = 0;
+static uint8_t s_dsc_phase = 0;
 static uint16_t s_all_chrs[MAX_ALL_CHRS];
 static int s_all_chr_count = 0;
 
@@ -311,15 +316,22 @@ static void begin_init_sequence(void)
 static int dsc_all_cb(uint16_t conn_handle, const struct ble_gatt_error *error,
                       uint16_t chr_val_handle, const struct ble_gatt_dsc *dsc, void *arg)
 {
-    (void)conn_handle; (void)chr_val_handle; (void)arg;
+    (void)chr_val_handle; (void)arg;
     if (error->status == 0 && dsc) {
         if (dsc->uuid.u.type == BLE_UUID_TYPE_16 && dsc->uuid.u16.value == 0x2902) {
             if (s_cccd_count < MAX_CCCDS) {
                 s_cccd_handles[s_cccd_count++] = dsc->handle;
             }
-            app_log("BLE", "CCCD at 0x%04X", dsc->handle);
         }
     } else if (error->status == BLE_HS_EDONE) {
+        // Chain the HOGP range after the ATVV range so we never scan all
+        // 0xFFFF handles (which took ~11 s on a remote with high slave latency).
+        if (s_dsc_phase == 0 && s_hid_start && s_hid_end >= s_hid_start) {
+            s_dsc_phase = 1;
+            int rc = ble_gattc_disc_all_dscs(conn_handle, s_hid_start, s_hid_end, dsc_all_cb, NULL);
+            if (rc == 0) return 0;
+            app_log("BLE", "disc HOGP descriptors rc=%d", rc);
+        }
         app_log("BLE", "Discovered %d CCCD(s)", s_cccd_count);
         begin_init_sequence();
     }
@@ -354,9 +366,10 @@ static int chr_disc_cb(uint16_t conn_handle, const struct ble_gatt_error *error,
                 s_hid_ctrl_chr = chr->val_handle;
             } else if (ble_uuid_cmp(u, &s_uuid_batt_level.u) == 0) {
                 s_batt_level_chr = chr->val_handle;
-                app_log("BATTERY", "Battery level char at 0x%04X", s_batt_level_chr);
             } else if (ble_uuid_cmp(u, &s_uuid_batt_status.u) == 0) {
                 s_batt_status_chr = chr->val_handle;
+            } else if (ble_uuid_cmp(u, &s_uuid_model_number.u) == 0) {
+                s_model_chr = chr->val_handle;
             }
         }
     } else if (error->status == BLE_HS_EDONE) {
@@ -364,7 +377,14 @@ static int chr_disc_cb(uint16_t conn_handle, const struct ble_gatt_error *error,
                 s_atvv_cmd_chr, s_atvv_aud_chr, s_atvv_ctl_chr,
                 s_hid_report_count, s_hid_proto_chr, s_hid_ctrl_chr);
         s_cccd_count = 0;
-        int rc = ble_gattc_disc_all_dscs(conn_handle, 0, 0xFFFF, dsc_all_cb, NULL);
+        s_dsc_phase = 0;
+        int rc = -1;
+        if (s_atvv_start && s_atvv_end >= s_atvv_start) {
+            rc = ble_gattc_disc_all_dscs(conn_handle, s_atvv_start, s_atvv_end, dsc_all_cb, NULL);
+        } else if (s_hid_start && s_hid_end >= s_hid_start) {
+            s_dsc_phase = 1;
+            rc = ble_gattc_disc_all_dscs(conn_handle, s_hid_start, s_hid_end, dsc_all_cb, NULL);
+        }
         if (rc != 0) {
             app_log("BLE", "disc_all_dscs rc=%d, subscribing with fallback handles", rc);
             begin_init_sequence();
@@ -404,6 +424,8 @@ static void start_discovery(void)
     s_atvv_cmd_chr = s_atvv_aud_chr = s_atvv_ctl_chr = 0;
     s_hid_proto_chr = s_hid_ctrl_chr = 0;
     s_hid_report_count = 0;
+    s_model_chr = 0;
+    s_model_read = false;
     s_atvv_start = s_atvv_end = s_hid_start = s_hid_end = 0;
     s_cccd_count = 0;
     s_all_chr_count = 0;
@@ -421,25 +443,26 @@ static void handle_atvv_ctl(const uint8_t *data, size_t len)
 
     if (op == 0x04 && len >= 2 && data[1] == 0x03) {
         s_session_id = (len >= 4) ? data[3] : 0;
+        uint8_t codec = (len >= 3) ? data[2] : 0;
         s_state = BLE_STATE_TALKING;
         key_engine_feed_key(&g_key_engine, MI_KEY_VOICE, true, now_ms());
-        app_log("ATVV", "Voice PRESSED (session %u)", s_session_id);
+        app_log("ATVV", "Voice start (session %u, codec %u)", s_session_id, codec);
     } else if (op == 0x00 || op == 0x08) {
         if (s_state == BLE_STATE_TALKING) {
             s_state = BLE_STATE_CONNECTED;
             key_engine_feed_key(&g_key_engine, MI_KEY_VOICE, false, now_ms());
-            app_log("ATVV", "Voice RELEASED (op=0x%02X)", op);
+            app_log("ATVV", "Voice stop");
         }
     } else if (op == 0x0B && len >= 7) {
         uint16_t ver = (uint16_t)((data[1] << 8) | data[2]);
+        uint8_t codecs = (len >= 4) ? data[3] : 0;
         uint16_t fs = (uint16_t)((data[5] << 8) | data[6]);
         if (fs > 0) s_frame_size = fs;
-        app_log("ATVV", "CAPS ver=0x%04X frame=%u", ver, (unsigned)s_frame_size);
+        app_log("ATVV", "Capabilities: ver=0x%04X codecs=0x%02X frame=%u", ver, codecs, (unsigned)s_frame_size);
     } else if (op == 0x0A && len >= 7) {
         int16_t pred = (int16_t)((data[4] << 8) | data[5]);
         int8_t step = (int8_t)data[6];
         audio_pipeline_sync(&g_audio_pipeline, pred, step);
-        app_log("ATVV", "SYNC pred=%d step=%d", pred, step);
     }
 }
 
@@ -535,6 +558,68 @@ static void read_battery(void)
     }
     s_battery_last_ms = now_ms();
     ble_gattc_read(s_conn_handle, s_batt_level_chr, battery_read_cb, NULL);
+}
+
+// ===========================================================================
+// Device model (Device Information Service 0x180A, characteristic 0x2A24)
+//
+// RC001/RC003 firmware 2671 packs IMA-ADPCM high-nibble-first, while the ARN9
+// firmware used by the Bluetooth Remote 2 / 2 Pro packs low-nibble-first.
+// Reading the model string lets us pick the correct decode order; otherwise
+// the voice stream decodes into noise.
+// ===========================================================================
+static int model_read_cb(uint16_t conn_handle, const struct ble_gatt_error *error,
+                         struct ble_gatt_attr *attr, void *arg)
+{
+    (void)conn_handle; (void)arg;
+    if (error->status != 0) {
+        app_log("MODEL", "read failed: %d", error->status);
+        read_battery();
+        return 0;
+    }
+    if (attr && attr->om) {
+        char buf[48];
+        uint16_t len = OS_MBUF_PKTLEN(attr->om);
+        if (len > sizeof(buf) - 1) len = sizeof(buf) - 1;
+        if (os_mbuf_copydata(attr->om, 0, len, buf) == 0) {
+            buf[len] = '\0';
+            app_log("MODEL", "Remote model: %s", buf);
+            for (char *p = buf; *p; p++) {
+                if (*p >= 'a' && *p <= 'z') *p -= 32;
+            }
+            if (strstr(buf, "ARN9")) {
+                audio_pipeline_set_nibble_order(&g_audio_pipeline, true);
+                app_log("MODEL", "ARN9 detected -> ADPCM low-nibble-first");
+            }
+        }
+    }
+    read_battery();
+    return 0;
+}
+
+static void read_model_number(void)
+{
+    if (s_conn_handle == BLE_HS_CONN_HANDLE_NONE || s_model_chr == 0 || s_model_read) {
+        read_battery();
+        return;
+    }
+    s_model_read = true;
+    int rc = ble_gattc_read(s_conn_handle, s_model_chr, model_read_cb, NULL);
+    if (rc != 0) {
+        app_log("MODEL", "ble_gattc_read rc=%d", rc);
+        read_battery();
+    }
+}
+
+// NimBLE (central) does not exchange the ATT MTU automatically. Without this
+// the link stays at the 23-byte default and the remote can only send 20-byte
+// audio notifications, which is far below the ~8 KB/s needed for 16 kHz ADPCM.
+static int mtu_exchange_cb(uint16_t conn_handle, const struct ble_gatt_error *error,
+                           uint16_t mtu, void *arg)
+{
+    (void)conn_handle; (void)arg;
+    app_log("BLE", "MTU exchange done: status=%d mtu=%u", error->status, mtu);
+    return 0;
 }
 
 // ===========================================================================
@@ -660,6 +745,15 @@ static int gap_event_cb(struct ble_gap_event *event, void *arg)
                 s_conn_start_ms = now_ms();
                 s_discovery_started = false;
                 app_log("BLE", "GATT connected (conn=%u)", s_conn_handle);
+                struct ble_gap_conn_desc cdesc;
+                if (ble_gap_conn_find(s_conn_handle, &cdesc) == 0) {
+                    app_log("BLE", "Conn params: itvl=%u latency=%u timeout=%u",
+                            cdesc.conn_itvl, cdesc.conn_latency, cdesc.supervision_timeout);
+                }
+                int mtu_rc = ble_gattc_exchange_mtu(s_conn_handle, mtu_exchange_cb, NULL);
+                if (mtu_rc != 0) {
+                    app_log("BLE", "MTU exchange failed to start: rc=%d", mtu_rc);
+                }
                 int rc = ble_gap_security_initiate(s_conn_handle);
                 if (rc != 0) {
                     app_log("BLE", "security_initiate rc=%d, discovering anyway", rc);
@@ -680,6 +774,8 @@ static int gap_event_cb(struct ble_gap_event *event, void *arg)
             s_pressed_count = 0;
             s_batt_level_chr = 0;
             s_batt_status_chr = 0;
+            s_model_chr = 0;
+            s_model_read = false;
             s_battery_level = -1;
             key_engine_release_all(&g_key_engine, now_ms());
             usb_hid_keyboard_release();
@@ -707,10 +803,22 @@ static int gap_event_cb(struct ble_gap_event *event, void *arg)
             app_log("BLE", "MTU updated: %u", event->mtu.value);
             break;
 
+        case BLE_GAP_EVENT_CONN_UPDATE: {
+            struct ble_gap_conn_desc udesc;
+            if (ble_gap_conn_find(event->conn_update.conn_handle, &udesc) == 0) {
+                app_log("BLE", "Conn updated: status=%d itvl=%u latency=%u timeout=%u",
+                        event->conn_update.status, udesc.conn_itvl,
+                        udesc.conn_latency, udesc.supervision_timeout);
+            } else {
+                app_log("BLE", "Conn updated: status=%d", event->conn_update.status);
+            }
+            break;
+        }
+
         case BLE_GAP_EVENT_NOTIFY_RX: {
             struct os_mbuf *om = event->notify_rx.om;
             uint16_t handle = event->notify_rx.attr_handle;
-            uint8_t buf[256];
+            uint8_t buf[512];
             uint16_t len = OS_MBUF_PKTLEN(om);
             if (len > sizeof(buf)) len = sizeof(buf);
             if (os_mbuf_copydata(om, 0, len, buf) != 0) break;
@@ -742,8 +850,8 @@ static int gap_event_cb(struct ble_gap_event *event, void *arg)
 static struct ble_gap_conn_params s_conn_params = {
     .scan_itvl = 16,
     .scan_window = 16,
-    .itvl_min = 12,
-    .itvl_max = 24,
+    .itvl_min = 6,       // 7.5 ms: enough events to carry 16 kHz ADPCM (~67 frames/s)
+    .itvl_max = 12,      // 15 ms
     .latency = 0,
     .supervision_timeout = 400,
     .min_ce_len = 0,

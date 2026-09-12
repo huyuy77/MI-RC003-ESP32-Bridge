@@ -1,12 +1,13 @@
 #include "audio_agc.h"
+#include "app_config.h"
 
 void audio_agc_init(audio_agc_t *agc)
 {
     if (!agc) return;
-    agc->target_level = 28000.0f;
-    agc->decay_rate = 0.9997f;
-    agc->max_gain = 30.0f;
-    agc->noise_floor = 200.0f;
+    agc->target_level = AGC_TARGET_LEVEL;
+    agc->decay_rate = AGC_DECAY_RATE;
+    agc->max_gain = AGC_MAX_GAIN;
+    agc->noise_floor = AGC_NOISE_FLOOR;
     agc->peak = agc->target_level; // Soft-start at 1.0x gain to prevent burst noise
 }
 

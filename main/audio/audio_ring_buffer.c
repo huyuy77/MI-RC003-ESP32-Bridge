@@ -22,13 +22,17 @@ bool audio_ring_buffer_init(audio_ring_buffer_t *rb, int16_t *storage, size_t ca
 size_t audio_ring_buffer_available_read(const audio_ring_buffer_t *rb)
 {
     if (!rb) return 0;
-    return rb->head - rb->tail;
+    size_t used = rb->head - rb->tail;
+    // Guard against head/tail underflow (tail ahead of head) which would wrap
+    // to a huge value and make the consumer read garbage without underrunning.
+    if (used > rb->capacity) return 0;
+    return used;
 }
 
 size_t audio_ring_buffer_available_write(const audio_ring_buffer_t *rb)
 {
     if (!rb) return 0;
-    return rb->capacity - (rb->head - rb->tail);
+    return rb->capacity - audio_ring_buffer_available_read(rb);
 }
 
 size_t audio_ring_buffer_write(audio_ring_buffer_t *rb, const int16_t *samples, size_t count)
@@ -52,9 +56,17 @@ size_t audio_ring_buffer_read(audio_ring_buffer_t *rb, int16_t *out_samples, siz
 {
     if (!rb || !out_samples || count == 0) return 0;
 
-    size_t avail = audio_ring_buffer_available_read(rb);
-    size_t to_read = (count < avail) ? count : avail;
+    // Snapshot head and tail together so a concurrent clear() cannot make the
+    // computed count inconsistent with the index we advance.
+    size_t h = rb->head;
     size_t t = rb->tail;
+    size_t used = h - t;
+    if (used > rb->capacity) {
+        // tail is ahead of head (corrupted/underflowed): resynchronise.
+        rb->tail = h;
+        return 0;
+    }
+    size_t to_read = (count < used) ? count : used;
 
     for (size_t i = 0; i < to_read; i++) {
         out_samples[i] = rb->buffer[(t + i) & rb->mask];

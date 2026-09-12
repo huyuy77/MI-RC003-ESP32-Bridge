@@ -18,10 +18,10 @@ extern "C" {
 #define AUDIO_RING_BUFFER_SIZE    8192      // Ring buffer capacity (in samples, ~512 ms)
 
 // AGC & Filter parameters
-#define AGC_TARGET_LEVEL          28000.0f
-#define AGC_DECAY_RATE            0.9997f
-#define AGC_MAX_GAIN              30.0f
-#define AGC_NOISE_FLOOR           200.0f
+#define AGC_TARGET_LEVEL          12000.0f  // Target peak (~-8.7 dBFS), avoids driving noise to full scale
+#define AGC_DECAY_RATE            0.9995f   // Peak envelope decay per sample
+#define AGC_MAX_GAIN              4.0f      // Cap boost at +12 dB so background hiss stays low
+#define AGC_NOISE_FLOOR           1000.0f   // Do not chase the envelope below this level
 #define AUDIO_LEAD_MUTE_SAMPLES   2400      // 150 ms silence zone to hide button click
 #define AUDIO_FADE_IN_SAMPLES     160       // 10 ms micro fade-in
 #define DECLIP_THRESHOLD          1000
