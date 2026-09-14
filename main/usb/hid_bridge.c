@@ -64,6 +64,14 @@ bool usb_hid_keyboard_press(uint8_t modifier, uint8_t keycode)
         vTaskDelay(pdMS_TO_TICKS(15));
     }
 
+    // HID usages 0xE0..0xE7 are modifiers and must go in the modifier byte,
+    // not the 6-key rollover array. This keeps legacy keymaps (where a
+    // modifier was stored as the key code) working.
+    if (keycode >= 0xE0 && keycode <= 0xE7) {
+        modifier |= (uint8_t)(1u << (keycode - 0xE0));
+        keycode = 0;
+    }
+
     hid_keyboard_report_t report = {0};
     report.modifier = modifier;
     report.keycode[0] = keycode;

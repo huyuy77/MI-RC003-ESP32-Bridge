@@ -16,6 +16,8 @@
   const ACTION = MiRC003.ACTION;
   const PHYSICAL_KEYS = MiRC003.PHYSICAL_KEYS;
   const MOD_BITS = MiRC003.MOD_BITS;
+  const MOD_NAMES = {};
+  MOD_BITS.forEach(([bit, name]) => { MOD_NAMES[bit] = name; });
   const MOUSE_BUTTONS = MiRC003.MOUSE_BUTTONS;
   const HID_GROUPS = MiRC003.HID_GROUPS;
   const HID_EXTRA_GROUPS = MiRC003.HID_EXTRA_GROUPS;
@@ -379,7 +381,9 @@
     if (!type) return null;
     let text = ACTION[type] || ("类型" + type);
     if (type === 1 || type === 2) {
-      return `${text} (mod 0x${(b[prefix + "_mod"] || 0).toString(16)} key 0x${(b[prefix + "_key"] || 0).toString(16)})`;
+      const mods = MOD_BITS.filter(([bit]) => (b[prefix + "_mod"] || 0) & bit).map(([, n]) => n);
+      if (b[prefix + "_key"]) mods.push(Keymap.hidName(b[prefix + "_key"]));
+      return mods.length ? `${text} (${mods.join(" + ")})` : text;
     }
     if (type === 4) return `${text} (0x${(b[prefix + "_cons"] || 0).toString(16)})`;
     if (type === 7) return `${text} (0x${(b[prefix + "_mod"] || 0).toString(16)}, 0x${(b[prefix + "_key"] || 0).toString(16)})`;
@@ -713,7 +717,22 @@
     }
 
     const nameLabel = block.querySelector(".kb-selected-name");
-    if (nameLabel) nameLabel.textContent = Keymap.hidName(val);
+    if (nameLabel) updateKeyLabel(block);
+  }
+
+  // "当前" label shows the key name, or the checked modifier names when no
+  // plain key is selected (a modifier-only action).
+  function updateKeyLabel(block) {
+    if (!block) return;
+    const label = block.querySelector(".kb-selected-name");
+    if (!label) return;
+    const val = parseInt(block.querySelector("select.f-key")?.value || "0", 10);
+    if (val) { label.textContent = Keymap.hidName(val); return; }
+    const mods = [];
+    block.querySelectorAll(".f-mod").forEach((c) => {
+      if (c.checked) mods.push(MOD_NAMES[parseInt(c.value, 10)]);
+    });
+    label.textContent = mods.length ? mods.join(" + ") : Keymap.hidName(0);
   }
 
   function setPickerKey(block, fieldCls, val) {
@@ -854,8 +873,15 @@
 
     // Hidden <select> holds the actual key value; the visual keyboard and the
     // extended dropdown both update it. It carries the full usage list so an
-    // extended key (e.g. F13) survives a read-back.
-    const usageOptions = HID_GROUPS.concat(HID_EXTRA_GROUPS).map(([g, items]) =>
+    // extended key (e.g. F13) or a modifier key survives a read-back.
+    const modifierOptions = `<optgroup label="修饰键">` +
+      MOD_BITS.map(([, name], i) => {
+        const usage = 0xe0 + i;
+        return `<option value="${usage}" ${usage === key ? "selected" : ""}>${name}</option>`;
+      }).join("") + `</optgroup>`;
+    const usageOptions = `<option value="0" ${key === 0 ? "selected" : ""}>— 未选择 —</option>` +
+      modifierOptions +
+      HID_GROUPS.concat(HID_EXTRA_GROUPS).map(([g, items]) =>
       `<optgroup label="${g}">` + items.map(([v, n]) =>
         `<option value="${v}" ${v === key ? "selected" : ""}>${n}</option>`).join("") + `</optgroup>`
     ).join("");
@@ -874,7 +900,9 @@
         `<option value="${v}">${n}</option>`).join("") + `</optgroup>`
     ).join("");
 
-    const selectedKeyName = Keymap.hidName(key);
+    const modNames = MOD_BITS.filter(([bit]) => mod & bit).map(([, n]) => n);
+    const selectedKeyName = key ? Keymap.hidName(key)
+      : (modNames.length ? modNames.join(" + ") : Keymap.hidName(0));
 
     return `
       <div class="action-block" data-prefix="${prefix}">
@@ -1055,6 +1083,9 @@
       });
     });
     // Reflect the current key in every control (highlight, dropdown, label).
+    document.querySelectorAll("#modal-body .f-mod").forEach((c) => {
+      c.addEventListener("change", () => updateKeyLabel(c.closest(".action-block")));
+    });
     document.querySelectorAll("#modal-body .action-block").forEach((block) => {
       const hidden = block.querySelector("select.f-key");
       if (hidden) selectKeyInBlock(block, parseInt(hidden.value || "0", 10));

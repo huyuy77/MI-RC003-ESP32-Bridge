@@ -189,6 +189,12 @@
     ]],
   ];
 
+  /** Keyboard modifier HID usages (0xE0-0xE7) and their names. */
+  var HID_MODIFIERS = {
+    0xe0: "左Ctrl", 0xe1: "左Shift", 0xe2: "左Alt", 0xe3: "左Win",
+    0xe4: "右Ctrl", 0xe5: "右Shift", 0xe6: "右Alt", 0xe7: "右Win",
+  };
+
   /** Consumer (media/system) usages, grouped for dropdowns. */
   var CONSUMER_GROUPS = [
     ["媒体", [[0xcd,"播放/暂停"],[0xb5,"下一曲"],[0xb6,"上一曲"],[0xb7,"停止"],[0xb3,"快进"],[0xb4,"快退"]]],
@@ -405,6 +411,7 @@
 
     /** Name for a keyboard HID usage (searches both usage tables). */
     hidName: function (code) {
+      if (HID_MODIFIERS[code]) return HID_MODIFIERS[code];
       var name = null;
       forEachItem(HID_GROUPS, function (v, n) { if (v === code) name = n; });
       if (name == null) forEachItem(HID_EXTRA_GROUPS, function (v, n) { if (v === code) name = n; });
@@ -775,6 +782,7 @@
   MiRC003.MOUSE_BUTTONS = MOUSE_BUTTONS;
   MiRC003.HID_GROUPS = HID_GROUPS;
   MiRC003.HID_EXTRA_GROUPS = HID_EXTRA_GROUPS;
+  MiRC003.HID_MODIFIERS = HID_MODIFIERS;
   MiRC003.CONSUMER_GROUPS = CONSUMER_GROUPS;
   MiRC003.Keymap = Keymap;
 
