@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="theme-color" content="#fbfbfd" />
   <title>MI-RC003 Bridge - WebUSB 配置中心</title>
-  <link rel="stylesheet" href="assets/style.css?v=38" />
+  <link rel="stylesheet" href="assets/style.css?v=40" />
 </head>
 <body>
   <header class="topbar">
@@ -47,6 +47,7 @@
         <div class="card stat"><span class="label">BLE 状态</span><span id="st-ble" class="value">-</span></div>
         <div class="card stat"><span class="label">遥控器电量</span><span id="st-battery" class="value">-</span></div>
         <div class="card stat"><span class="label">当前配置</span><span id="st-layer" class="value">-</span></div>
+        <div class="card stat"><span class="label">切换模式</span><span id="st-switch" class="value">-</span></div>
         <div class="card stat"><span class="label">音频帧</span><span id="st-frames" class="value">-</span></div>
         <div class="card stat"><span class="label">空闲内存</span><span id="st-heap" class="value">-</span></div>
         <div class="card stat"><span class="label">PSRAM</span><span id="st-psram" class="value">-</span></div>
@@ -80,6 +81,7 @@
           <h3>配置方案</h3>
           <div class="row">
             <button id="btn-keymap-activate" class="btn small">设为当前配置</button>
+            <button id="btn-switch-open" class="btn small">配置切换模式…</button>
             <button id="btn-keymap-refresh" class="btn small">读取</button>
             <button id="btn-keymap-save" class="btn small primary">保存到设备</button>
             <button id="btn-keymap-reset" class="btn small danger">恢复出厂</button>
@@ -179,7 +181,28 @@
 
   <div id="toast" class="toast hidden"></div>
 
-  <script src="assets/mi-rc003.js?v=7"></script>
-  <script src="assets/app.js?v=47"></script>
+  <!-- 配置切换模式弹窗 -->
+  <div id="switch-modal" class="modal hidden">
+    <div class="modal-box">
+      <div class="card-head">
+        <h3>配置切换模式</h3>
+        <button id="switch-modal-close" class="btn small">关闭</button>
+      </div>
+      <p class="hint">
+        长按「电视键」进入配置切换模式（短按仍为 F8）；也可在按键配置中把任意按键的动作设为「进入配置切换模式」。<br />
+        进入后指示灯以当前配置颜色呼吸闪烁：按「确定键」切换回默认配置，按方向键切换到对应配置并自动退出；再次按「当前配置中绑定为进入切换模式」的按键退出（仅当前配置的绑定有效），「返回键」始终可退出，电视键仅在「连按 5 次进入」或「当前配置绑定为切换键」时可退出，约 5 秒无操作自动退出。<br />
+        若当前配置未设置切换按键，可快速连按「电视键」5 次进入切换模式；进入后 2 秒内忽略电视键，避免连按尾键立即退出。<br />
+        「确定键」固定为默认配置，不可修改；下方仅可修改四个方向键对应的配置。
+      </p>
+      <div id="switch-map" class="switch-map"></div>
+      <div class="row end">
+        <button id="switch-modal-cancel" class="btn small">取消</button>
+        <button id="switch-modal-apply" class="btn small primary">应用</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="assets/mi-rc003.js?v=8"></script>
+  <script src="assets/app.js?v=51"></script>
 </body>
 </html>

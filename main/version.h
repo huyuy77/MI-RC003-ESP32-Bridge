@@ -4,7 +4,7 @@
 // Firmware identity
 // ============================================================
 #define FIRMWARE_NAME     "MI-RC003 Bridge"
-#define FIRMWARE_VERSION  "1.2.1"
+#define FIRMWARE_VERSION  "1.3.0"
 #define FIRMWARE_BUILD    __DATE__ " " __TIME__
 #define HARDWARE_TARGET   "ESP32-S3"
 

@@ -90,6 +90,7 @@
     MOUSE_BUTTON_RELEASE: 13,
     MOUSE_MOVE: 14,
     MOUSE_WHEEL: 15,
+    ENTER_SWITCH_MODE: 16,
   };
 
   /** Human-readable action names, keyed by action type. */
@@ -103,13 +104,14 @@
     6: "多媒体-释放",
     7: "语音",
     8: "语音释放",
-    9: "切换配置",
+    9: "切换配置（旧）",
     10: "穿透继承",
     11: "鼠标按键-单击",
     12: "鼠标按键-按住",
     13: "鼠标按键-释放",
     14: "鼠标移动",
     15: "鼠标滚轮",
+    16: "进入配置切换模式",
   };
 
   /** Gesture keys used by Keymap helpers. */
@@ -131,6 +133,22 @@
     { vk: 0x81, name: "音量-" },
     { vk: 0xc0, name: "电视键" },
   ];
+
+  /**
+   * Factory default configuration-switch map. While the switch mode is active,
+   * pressing the key selects the configuration in `layer`. Only the four
+   * directions are user-editable; the confirm key is locked to the default
+   * configuration by the firmware.
+   */
+  var SWITCH_MAP_DEFAULT = [
+    { source_vk: 0x52, layer: 1 }, // 方向上 -> 配置 1
+    { source_vk: 0x4f, layer: 2 }, // 方向右 -> 配置 2
+    { source_vk: 0x51, layer: 3 }, // 方向下 -> 配置 3
+    { source_vk: 0x50, layer: 4 }, // 方向左 -> 配置 4
+  ];
+
+  /** The confirm key is locked to the default configuration in switch mode. */
+  var SWITCH_MAP_LOCKED = { source_vk: 0x28, layer: 0 };
 
   /** Keyboard modifier bitmasks (`*_mod`). */
   var MOD_BITS = [
@@ -261,6 +279,54 @@
       return layer.bindings.length !== before;
     },
 
+    /** Global configuration-switch map (array of { source_vk, layer }). */
+    getSwitchMap: function (keymap) {
+      return (keymap && Array.isArray(keymap.switch_map)) ? keymap.switch_map : [];
+    },
+
+    /** Target configuration for a key in the switch map, or -1 when unmapped. */
+    getSwitchTarget: function (keymap, sourceVk) {
+      var map = Keymap.getSwitchMap(keymap);
+      for (var i = 0; i < map.length; i++) {
+        if (map[i].source_vk === sourceVk) return map[i].layer;
+      }
+      return -1;
+    },
+
+    /**
+     * Bind a key to a target configuration (layer 0..4) in the switch map.
+     * Passing a layer < 0 removes the key from the map. One key maps to one
+     * configuration; several keys may target the same configuration.
+     */
+    setSwitchTarget: function (keymap, sourceVk, layer) {
+      if (!keymap) return null;
+      if (!Array.isArray(keymap.switch_map)) keymap.switch_map = [];
+      var map = keymap.switch_map;
+      var idx = -1;
+      for (var i = 0; i < map.length; i++) {
+        if (map[i].source_vk === sourceVk) { idx = i; break; }
+      }
+      if (layer == null || layer < 0) {
+        if (idx >= 0) map.splice(idx, 1);
+        return null;
+      }
+      if (idx >= 0) {
+        map[idx].layer = layer;
+        return map[idx];
+      }
+      var entry = { source_vk: sourceVk, layer: layer };
+      map.push(entry);
+      return entry;
+    },
+
+    /** Remove a key from the switch map. Returns true when something changed. */
+    removeSwitchTarget: function (keymap, sourceVk) {
+      if (!keymap || !Array.isArray(keymap.switch_map)) return false;
+      var before = keymap.switch_map.length;
+      keymap.switch_map = keymap.switch_map.filter(function (e) { return e.source_vk !== sourceVk; });
+      return keymap.switch_map.length !== before;
+    },
+
     /**
      * Set (or clear) one gesture of a key.
      * @param {object} layer    Layer object from the keymap.
@@ -358,6 +424,9 @@
         if (typeof layer.id !== "number") errors.push("配置缺少数字 id");
         if (!Array.isArray(layer.bindings)) errors.push("配置 " + layer.id + " 缺少 bindings 数组");
       });
+      if (keymap.switch_map != null && !Array.isArray(keymap.switch_map)) {
+        errors.push("switch_map 必须是数组");
+      }
       return errors;
     },
   };
@@ -700,6 +769,8 @@
   MiRC003.ACTION = ACTION;
   MiRC003.GESTURES = GESTURES;
   MiRC003.PHYSICAL_KEYS = PHYSICAL_KEYS;
+  MiRC003.SWITCH_MAP_DEFAULT = SWITCH_MAP_DEFAULT;
+  MiRC003.SWITCH_MAP_LOCKED = SWITCH_MAP_LOCKED;
   MiRC003.MOD_BITS = MOD_BITS;
   MiRC003.MOUSE_BUTTONS = MOUSE_BUTTONS;
   MiRC003.HID_GROUPS = HID_GROUPS;

@@ -9,6 +9,28 @@ static SemaphoreHandle_t s_key_engine_mutex = NULL;
 // While a mouse-move key is held, emit one relative step every this many ms.
 #define MOUSE_MOVE_INTERVAL_MS 15
 
+// Configuration-switch mode auto-exits after this much inactivity.
+#define SWITCH_MODE_TIMEOUT_MS 5000
+
+// After entering via the rapid-TV shortcut, ignore TV for this long so the
+// tail of the rapid sequence cannot immediately exit the mode.
+#define SWITCH_MODE_TV_LOCKOUT_MS 2000
+
+// Rapid TV presses that force the switch mode even when the active
+// configuration has no switch key bound.
+#define TV_RAPID_PRESS_COUNT   5
+#define TV_RAPID_WINDOW_MS     1500
+
+// Latest engine time, kept so action handlers can timestamp events without
+// threading now_ms through every emit_action() call site.
+static uint32_t s_now_ms = 0;
+
+// Rapid TV-press detector for the fallback shortcut.
+static uint8_t  s_tv_rapid_count = 0;
+static uint32_t s_tv_rapid_first_ms = 0;
+
+extern void led_indicator_set_switch_mode(bool active);
+
 void key_engine_lock(void)
 {
     if (!s_key_engine_mutex) {
@@ -59,6 +81,19 @@ static uint8_t canonical_source_vk(uint8_t raw_key)
         case MI_KEY_TV_ALT:    return MI_KEY_TV;
         default: return raw_key;
     }
+}
+
+// Look up the target configuration for a key in the global switch map.
+// Returns -1 when the key is not part of the map.
+static int find_switch_target(const key_mapper_engine_t *engine, uint8_t can_vk)
+{
+    if (!engine) return -1;
+    for (size_t i = 0; i < engine->switch_map_count; i++) {
+        if (canonical_source_vk(engine->switch_map[i].source_vk) == can_vk) {
+            return (int)engine->switch_map[i].target_layer;
+        }
+    }
+    return -1;
 }
 
 static int find_binding_index_in_layer(const key_layer_t *layer, uint8_t raw_key)
@@ -149,6 +184,11 @@ static void emit_action(key_mapper_engine_t *engine, const key_action_t *action,
         return;
     }
 
+    if (action->type == ACTION_ENTER_SWITCH_MODE) {
+        key_engine_enter_switch_mode(engine, s_now_ms, false);
+        return;
+    }
+
     if (engine->output_cb) {
         engine->output_cb(action);
     }
@@ -185,6 +225,12 @@ void key_engine_switch_layer(key_mapper_engine_t *engine, uint8_t target_layer, 
 {
     if (!engine) return;
     if (target_layer >= MAX_LAYERS) target_layer = 0;
+
+    if (engine->switch_mode_active) {
+        engine->switch_mode_active = false;
+        led_indicator_set_switch_mode(false);
+    }
+
     if (engine->active_layer == target_layer) return;
 
     key_engine_release_all(engine, now_ms);
@@ -194,6 +240,50 @@ void key_engine_switch_layer(key_mapper_engine_t *engine, uint8_t target_layer, 
 
     led_indicator_set_layer_color(engine->layers[target_layer].led_color);
     app_log("KEYMAP", "Layer Switched -> [%u: %s]", target_layer, engine->layers[target_layer].name);
+}
+
+void key_engine_enter_switch_mode(key_mapper_engine_t *engine, uint32_t now_ms, bool via_tv_rapid)
+{
+    if (!engine) return;
+    key_engine_lock();
+    engine->switch_mode_active = true;
+    engine->switch_mode_enter_ms = now_ms;
+    engine->switch_mode_last_activity_ms = now_ms;
+    engine->switch_mode_via_tv_rapid = via_tv_rapid;
+    // Drop any held-key state so releasing them after the mode exits does not
+    // emit the underlying action.
+    memset(engine->states, 0, sizeof(engine->states));
+    uint8_t layer = engine->active_layer;
+    key_engine_unlock();
+
+    led_indicator_set_switch_mode(true);
+    app_log("KEYMAP", "Config switch mode ON (layer %u)", layer);
+}
+
+void key_engine_exit_switch_mode(key_mapper_engine_t *engine)
+{
+    if (!engine) return;
+    key_engine_lock();
+    bool was_active = engine->switch_mode_active;
+    engine->switch_mode_active = false;
+    if (was_active) {
+        memset(engine->states, 0, sizeof(engine->states));
+    }
+    key_engine_unlock();
+
+    if (was_active) {
+        led_indicator_set_switch_mode(false);
+        app_log("KEYMAP", "Config switch mode OFF");
+    }
+}
+
+bool key_engine_switch_mode_active(const key_mapper_engine_t *engine)
+{
+    if (!engine) return false;
+    key_engine_lock();
+    bool active = engine->switch_mode_active;
+    key_engine_unlock();
+    return active;
 }
 
 uint8_t key_engine_get_active_layer(const key_mapper_engine_t *engine)
@@ -210,6 +300,20 @@ void key_engine_load_defaults(key_mapper_engine_t *engine)
     engine->layer_count = MAX_LAYERS;
     engine->active_layer = 0;
     engine->last_activity_time = 0;
+    engine->switch_mode_active = false;
+    engine->switch_mode_enter_ms = 0;
+    engine->switch_mode_last_activity_ms = 0;
+    engine->switch_mode_via_tv_rapid = false;
+    engine->config_rev++;
+
+    // Default configuration-switch map: only the four directions are
+    // user-editable; the confirm key is locked to the default configuration
+    // in the engine.
+    engine->switch_map_count = 0;
+    engine->switch_map[engine->switch_map_count++] = (key_switch_map_entry_t){ MI_KEY_UP,    1 };
+    engine->switch_map[engine->switch_map_count++] = (key_switch_map_entry_t){ MI_KEY_RIGHT, 2 };
+    engine->switch_map[engine->switch_map_count++] = (key_switch_map_entry_t){ MI_KEY_DOWN,  3 };
+    engine->switch_map[engine->switch_map_count++] = (key_switch_map_entry_t){ MI_KEY_LEFT,  4 };
 
     // ----------------------------------------------------
     // Layer 0: default
@@ -337,13 +441,16 @@ void key_engine_load_defaults(key_mapper_engine_t *engine)
         b.repeat_interval_ms = 70;
         l0->bindings[l0->binding_count++] = b;
     }
-    // TV -> F8
+    // TV -> F8 (short), long-press enters the configuration switch mode
     {
         key_binding_t b;
         memset(&b, 0, sizeof(b));
         b.source_vk = MI_KEY_TV;
         b.has_click = true;
         b.click_action = (key_action_t){ ACTION_KEYBOARD_TAP, USB_MOD_NONE, USB_KEY_F8, 0, 0, 0, 0, 0 };
+        b.has_long = true;
+        b.long_ms = 600;
+        b.long_action = (key_action_t){ ACTION_ENTER_SWITCH_MODE, 0, 0, 0, 0, 0, 0, 0 };
         l0->bindings[l0->binding_count++] = b;
     }
 
@@ -436,12 +543,85 @@ void key_engine_feed_key(key_mapper_engine_t *engine, uint8_t raw_key_code, bool
     if (!engine) return;
     key_engine_lock();
 
+    s_now_ms = now_ms;
     engine->last_activity_time = now_ms;
 
     int slot = get_physical_key_slot(raw_key_code);
     if (slot < 0 || slot >= MAX_KEY_BINDINGS) {
         key_engine_unlock();
         return;
+    }
+
+    uint8_t can_vk = canonical_source_vk(raw_key_code);
+
+    // Modal configuration-switch mode: only keys in the global switch map and
+    // the BACK key act, and no normal HID action is emitted.
+    if (engine->switch_mode_active) {
+        key_slot_state_t *s = &engine->states[slot];
+        if (is_pressed) {
+            if (!s->is_pressed) {
+                s->is_pressed = true;
+                s->press_timestamp = now_ms;
+                // Any activity restarts the inactivity timeout.
+                engine->switch_mode_last_activity_ms = now_ms;
+
+                // A key exits the mode only when the CURRENT configuration
+                // binds it to the switch action; a key merely configured in
+                // another configuration does not. The TV key is the universal
+                // fallback (rapid-press entry), so it always exits once the
+                // lockout has elapsed. BACK always cancels.
+                key_binding_t sb;
+                get_effective_binding(engine, raw_key_code, &sb);
+                bool is_trigger =
+                    (sb.has_click && sb.click_action.type == ACTION_ENTER_SWITCH_MODE) ||
+                    (sb.has_long && sb.long_action.type == ACTION_ENTER_SWITCH_MODE) ||
+                    (sb.has_double && sb.double_action.type == ACTION_ENTER_SWITCH_MODE);
+                // Entering via the rapid-TV shortcut must not immediately exit
+                // on the tail of that same rapid sequence.
+                bool tv_locked = (can_vk == MI_KEY_TV) &&
+                    (now_ms - engine->switch_mode_enter_ms) < SWITCH_MODE_TV_LOCKOUT_MS;
+                // TV only exits when it was the rapid-press entry key, or when
+                // the current configuration binds it to the switch action.
+                bool tv_exit = (can_vk == MI_KEY_TV) &&
+                    (engine->switch_mode_via_tv_rapid || is_trigger);
+                bool exit_now = (can_vk == MI_KEY_BACK) ||
+                    (!tv_locked && (is_trigger || tv_exit));
+
+                if (exit_now) {
+                    key_engine_exit_switch_mode(engine);
+                } else {
+                    // The confirm key is locked to the default configuration.
+                    int target = (can_vk == MI_KEY_OK) ? 0 : find_switch_target(engine, can_vk);
+                    if (target >= 0) {
+                        engine->switch_mode_active = false;
+                        led_indicator_set_switch_mode(false);
+                        engine->states[slot].is_pressed = false;
+                        key_engine_switch_layer(engine, (uint8_t)target, now_ms);
+                    }
+                }
+            }
+        } else {
+            s->is_pressed = false;
+        }
+        key_engine_unlock();
+        return;
+    }
+
+    // Fallback: five rapid TV presses force the switch mode so a configuration
+    // that never bound the switch action can still be escaped.
+    if (is_pressed && can_vk == MI_KEY_TV) {
+        if (s_tv_rapid_count == 0 || (now_ms - s_tv_rapid_first_ms) > TV_RAPID_WINDOW_MS) {
+            s_tv_rapid_count = 1;
+            s_tv_rapid_first_ms = now_ms;
+        } else {
+            s_tv_rapid_count++;
+        }
+        if (s_tv_rapid_count >= TV_RAPID_PRESS_COUNT) {
+            s_tv_rapid_count = 0;
+            key_engine_enter_switch_mode(engine, now_ms, true);
+            key_engine_unlock();
+            return;
+        }
     }
 
     key_binding_t b;
@@ -488,7 +668,8 @@ void key_engine_feed_key(key_mapper_engine_t *engine, uint8_t raw_key_code, bool
                 } else if (b.has_click &&
                            (b.click_action.type == ACTION_KEYBOARD_TAP ||
                             b.click_action.type == ACTION_CONSUMER_TAP ||
-                            b.click_action.type == ACTION_MOUSE_BUTTON_TAP)) {
+                            b.click_action.type == ACTION_MOUSE_BUTTON_TAP ||
+                            b.click_action.type == ACTION_ENTER_SWITCH_MODE)) {
                     // Click mappings fire immediately on press so the host
                     // reacts without waiting for the key-up. The release branch
                     // below deliberately does not re-emit them, so holding the
@@ -538,7 +719,7 @@ void key_engine_feed_key(key_mapper_engine_t *engine, uint8_t raw_key_code, bool
                         key_action_t rel = { ACTION_MOUSE_BUTTON_RELEASE, 0, b.long_action.key_code, 0, 0, 0, 0, 0 };
                         emit_action(engine, &rel, raw_key_code, false);
                     }
-                } else if (b.has_click) {
+                } else if (b.has_click || b.has_double) {
                     if (!b.has_double) {
                         emit_action_as_tap_if_hold(engine, &b.click_action, raw_key_code);
                     } else {
@@ -562,6 +743,17 @@ void key_engine_tick(key_mapper_engine_t *engine, uint32_t now_ms)
 {
     if (!engine) return;
     key_engine_lock();
+
+    s_now_ms = now_ms;
+
+    // Auto-exit the configuration-switch mode after a period of inactivity.
+    if (engine->switch_mode_active &&
+        (now_ms - engine->switch_mode_last_activity_ms) >= SWITCH_MODE_TIMEOUT_MS) {
+        engine->switch_mode_active = false;
+        memset(engine->states, 0, sizeof(engine->states));
+        led_indicator_set_switch_mode(false);
+        app_log("KEYMAP", "Config switch mode timed out");
+    }
 
     if (engine->active_layer != 0 && engine->layers[engine->active_layer].type == LAYER_TYPE_TIMEOUT) {
         uint32_t timeout_ms = (uint32_t)engine->layers[engine->active_layer].timeout_sec * 1000;
@@ -651,6 +843,11 @@ void key_engine_release_all(key_mapper_engine_t *engine, uint32_t now_ms)
         s->waiting_double = false;
         s->press_count = 0;
         s->move_active = false;
+    }
+
+    if (engine->switch_mode_active) {
+        engine->switch_mode_active = false;
+        led_indicator_set_switch_mode(false);
     }
     key_engine_unlock();
 }

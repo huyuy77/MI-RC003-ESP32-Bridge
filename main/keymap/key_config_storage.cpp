@@ -33,6 +33,17 @@ typedef struct __attribute__((packed)) {
 
 #define LAYER_BLOB_MAX (sizeof(layer_hdr_t) + MAX_KEY_BINDINGS * sizeof(key_binding_t))
 
+// Global configuration-switch map blob (see ACTION_ENTER_SWITCH_MODE).
+#define SWITCH_BLOB_MAGIC 0x53574D41u
+#define SWITCH_NVS_KEY    "switch"
+
+typedef struct __attribute__((packed)) {
+    uint32_t magic;
+    uint8_t  count;
+    uint8_t  reserved[3];
+    key_switch_map_entry_t entries[MAX_SWITCH_MAP];
+} switch_blob_t;
+
 static SemaphoreHandle_t s_save_sem = NULL;
 
 static void layer_key(char *buf, size_t buf_len, int idx)
@@ -222,6 +233,13 @@ size_t key_config_to_json(const key_mapper_engine_t *engine, char *out, size_t o
         }
     }
 
+    JsonArray sm = doc["switch_map"].to<JsonArray>();
+    for (size_t i = 0; i < engine->switch_map_count && i < MAX_SWITCH_MAP; i++) {
+        JsonObject e = sm.add<JsonObject>();
+        e["source_vk"] = engine->switch_map[i].source_vk;
+        e["layer"] = engine->switch_map[i].target_layer;
+    }
+
     return serializeJson(doc, out, out_len);
 }
 
@@ -248,6 +266,10 @@ bool key_config_from_json(key_mapper_engine_t *engine, const char *json_str)
     key_engine_lock();
     memcpy(tmp, engine->layers, sizeof(key_layer_t) * MAX_LAYERS);
     key_engine_unlock();
+
+    key_switch_map_entry_t smap[MAX_SWITCH_MAP];
+    size_t smap_n = 0;
+    bool smap_present = false;
 
     bool applied = false;
     if (doc["layers"].is<JsonArray>()) {
@@ -279,6 +301,20 @@ bool key_config_from_json(key_mapper_engine_t *engine, const char *json_str)
         applied = true;
     }
 
+    if (doc["switch_map"].is<JsonArray>()) {
+        smap_present = true;
+        for (JsonObject e : doc["switch_map"].as<JsonArray>()) {
+            if (smap_n >= MAX_SWITCH_MAP) break;
+            uint8_t vk = (uint8_t)parse_u32_or_hex(e["source_vk"], 0);
+            uint32_t layer = parse_u32_or_hex(e["layer"], 0);
+            if (vk == 0 || layer >= MAX_LAYERS) continue;
+            if (vk == MI_KEY_VOICE_ALT) vk = MI_KEY_VOICE;
+            smap[smap_n].source_vk = vk;
+            smap[smap_n].target_layer = (uint8_t)layer;
+            smap_n++;
+        }
+    }
+
     if (applied) {
         app_log("KEYMAP", "Parsed L0=%u L1=%u L2=%u L3=%u L4=%u bindings",
                 (unsigned)tmp[0].binding_count, (unsigned)tmp[1].binding_count,
@@ -295,6 +331,11 @@ bool key_config_from_json(key_mapper_engine_t *engine, const char *json_str)
     memcpy(engine->layers, tmp, sizeof(key_layer_t) * MAX_LAYERS);
     engine->layer_count = MAX_LAYERS;
     memset(engine->states, 0, sizeof(engine->states));
+    if (smap_present) {
+        memcpy(engine->switch_map, smap, smap_n * sizeof(key_switch_map_entry_t));
+        engine->switch_map_count = smap_n;
+    }
+    engine->config_rev++;
     uint32_t color = engine->layers[engine->active_layer].led_color;
     key_engine_unlock();
 
@@ -348,6 +389,20 @@ bool key_config_storage_save(key_mapper_engine_t *engine)
             ok = false;
         }
     }
+
+    switch_blob_t *sb = (switch_blob_t *)buf;
+    sb->magic = SWITCH_BLOB_MAGIC;
+    sb->count = (uint8_t)engine->switch_map_count;
+    memset(sb->reserved, 0, sizeof(sb->reserved));
+    if (engine->switch_map_count > 0) {
+        memcpy(sb->entries, engine->switch_map,
+               engine->switch_map_count * sizeof(key_switch_map_entry_t));
+    }
+    if (nvs_set_blob(h, SWITCH_NVS_KEY, sb, sizeof(switch_blob_t)) != ESP_OK) {
+        app_log("KEYMAP", "NVS write failed for %s", SWITCH_NVS_KEY);
+        ok = false;
+    }
+
     uint8_t active = engine->active_layer;
     nvs_set_blob(h, "active", &active, 1);
     key_engine_unlock();
@@ -432,6 +487,21 @@ bool key_config_storage_load(key_mapper_engine_t *engine)
     if (nvs_get_blob(h, "active", &active, &alen) != ESP_OK || active >= MAX_LAYERS) {
         active = 0;
     }
+
+    key_switch_map_entry_t smap_load[MAX_SWITCH_MAP];
+    size_t smap_load_n = 0;
+    bool smap_load_ok = false;
+    {
+        switch_blob_t sb;
+        size_t slen = sizeof(sb);
+        if (nvs_get_blob(h, SWITCH_NVS_KEY, &sb, &slen) == ESP_OK &&
+            slen >= sizeof(switch_blob_t) && sb.magic == SWITCH_BLOB_MAGIC &&
+            sb.count <= MAX_SWITCH_MAP) {
+            memcpy(smap_load, sb.entries, sb.count * sizeof(key_switch_map_entry_t));
+            smap_load_n = sb.count;
+            smap_load_ok = true;
+        }
+    }
     nvs_close(h);
 
     if (!ok) {
@@ -447,6 +517,11 @@ bool key_config_storage_load(key_mapper_engine_t *engine)
     engine->layer_count = MAX_LAYERS;
     engine->active_layer = active;
     memset(engine->states, 0, sizeof(engine->states));
+    if (smap_load_ok) {
+        memcpy(engine->switch_map, smap_load, smap_load_n * sizeof(key_switch_map_entry_t));
+        engine->switch_map_count = smap_load_n;
+    }
+    engine->config_rev++;
     uint32_t color = engine->layers[active].led_color;
     key_engine_unlock();
 
@@ -499,6 +574,7 @@ void key_config_storage_reset_defaults(key_mapper_engine_t *engine)
         config_store_erase_key(KEYMAP_NS, key);
     }
     config_store_erase_key(KEYMAP_NS, "active");
+    config_store_erase_key(KEYMAP_NS, SWITCH_NVS_KEY);
 
     key_engine_lock();
     key_engine_load_defaults(engine);
@@ -525,6 +601,7 @@ size_t key_telemetry_to_json(const key_mapper_engine_t *engine, char *out, size_
     doc["key_code"] = engine->last_telemetry.key_code;
     doc["consumer_code"] = engine->last_telemetry.consumer_code;
     doc["active_layer"] = engine->active_layer;
+    doc["switch_mode"] = engine->switch_mode_active;
 
     return serializeJson(doc, out, out_len);
 }

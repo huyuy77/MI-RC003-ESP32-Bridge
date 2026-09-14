@@ -10,7 +10,7 @@
   "use strict";
 
   // WebUI version (independent of the firmware version). Bump on UI changes.
-  const WEBUI_VERSION = "1.4";
+  const WEBUI_VERSION = "1.5";
 
   const dev = new MiRC003();
   const ACTION = MiRC003.ACTION;
@@ -44,6 +44,7 @@
   let statusTimer = null;
   let telemetryTimer = null;
   let savingKeymap = false;
+  let lastConfigRev = null;     // device config revision seen by the UI
 
   const $ = (id) => document.getElementById(id);
 
@@ -90,6 +91,7 @@
   async function connect() {
     try {
       await dev.connect();
+      lastConfigRev = null;
       setConnected(true);
       toast("设备已连接");
       await loadDeviceInfo();
@@ -137,6 +139,20 @@
       $("st-frames").textContent = s.frames_decoded ?? 0;
       $("st-heap").textContent = formatBytes(s.free_heap);
       $("st-psram").textContent = formatBytes(s.free_psram);
+      const swEl = $("st-switch");
+      if (swEl) {
+        swEl.textContent = s.switch_mode ? "开启" : "关闭";
+        swEl.classList.toggle("on", !!s.switch_mode);
+      }
+      // Device-side configuration changes (e.g. factory reset or another
+      // client) are detected via config_rev; reload unless the user has
+      // unsaved edits.
+      if (lastConfigRev === null) {
+        lastConfigRev = s.config_rev;
+      } else if (s.config_rev !== lastConfigRev) {
+        lastConfigRev = s.config_rev;
+        if (!dirty) loadKeymap(true);
+      }
       if (s.version) {
         $("hdr-version").textContent = "固件 v" + s.version + (s.build ? " (" + s.build + ")" : "");
       }
@@ -243,6 +259,7 @@
       updateDirtyIndicator();
       renderLayerTabs();
       renderKeymapGrid();
+      renderSwitchMap();
       $("raw-json").value = JSON.stringify(keymap, null, 2);
     } catch (e) {
       toast("读取按键配置失败: " + e.message, true);
@@ -268,6 +285,7 @@
         try { await dev.setLayer(activeLayer); } catch (e) { /* ignore */ }
       }
       await loadKeymap(true);
+      lastConfigRev = null; // avoid a redundant reload on the next status poll
     } catch (e) {
       console.error(e);
       toast("保存失败: " + e.message, true);
@@ -285,6 +303,7 @@
       await dev.resetKeymap();
       toast("已恢复出厂配置");
       await loadKeymap();
+      lastConfigRev = null;
     } catch (e) {
       toast(e.message, true);
     }
@@ -483,6 +502,98 @@
     host.appendChild(controls);
   }
 
+  /* ------------------------- switch map ------------------------- */
+
+  // Confirm key is locked to the default configuration by the firmware; only
+  // the four directions can be remapped to a configuration.
+  const SWITCH_LOCKED_KEY = 0x28;
+  const SWITCH_EDITABLE_KEYS = [0x52, 0x4f, 0x51, 0x50]; // 上/右/下/左
+
+  function switchDot(color) {
+    return `<span class="switch-dot" style="background:${color || "#c7c7cc"}"></span>`;
+  }
+
+  function switchOptions() {
+    const opts = [{ v: -1, t: "不参与切换", color: null }];
+    (keymap.layers || []).forEach((l) => opts.push({ v: l.id, t: configLabel(l), color: layerColor(l) }));
+    return opts;
+  }
+
+  // Custom dropdown that shows each configuration's LED colour as a dot.
+  function makeSwitchPicker(current, disabled, onChange) {
+    const opts = switchOptions();
+    const sel = opts.find((o) => o.v === current) || opts[0];
+    const wrap = document.createElement("div");
+    wrap.className = "switch-picker" + (disabled ? " disabled" : "");
+
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "switch-picker-btn";
+    btn.disabled = !!disabled;
+    btn.innerHTML = switchDot(sel.color) +
+      `<span class="switch-picker-name">${escapeHtml(sel.t)}</span>` +
+      `<span class="switch-caret">▾</span>`;
+    wrap.appendChild(btn);
+    if (disabled) return wrap;
+
+    const menu = document.createElement("div");
+    menu.className = "switch-picker-menu hidden";
+    opts.forEach((o) => {
+      const item = document.createElement("button");
+      item.type = "button";
+      item.className = "switch-picker-item" + (o.v === current ? " active" : "");
+      item.innerHTML = switchDot(o.color) + `<span>${escapeHtml(o.t)}</span>`;
+      item.onclick = (e) => {
+        e.stopPropagation();
+        menu.classList.add("hidden");
+        if (o.v !== current) onChange(o.v);
+      };
+      menu.appendChild(item);
+    });
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      const wasOpen = !menu.classList.contains("hidden");
+      document.querySelectorAll(".switch-picker-menu").forEach((m) => m.classList.add("hidden"));
+      if (!wasOpen) menu.classList.remove("hidden");
+    };
+    wrap.appendChild(menu);
+    return wrap;
+  }
+
+  function renderSwitchMap() {
+    const host = $("switch-map");
+    if (!host) return;
+    if (!keymap || !Array.isArray(keymap.layers)) {
+      host.innerHTML = "<p class='hint'>请先连接设备并读取按键配置。</p>";
+      return;
+    }
+    // The confirm key is locked by the firmware; drop any stale entry.
+    MiRC003.Keymap.removeSwitchTarget(keymap, SWITCH_LOCKED_KEY);
+    host.innerHTML = "";
+
+    const addRow = (vk, disabled, current) => {
+      const pk = pkOf(vk);
+      const row = document.createElement("div");
+      row.className = "switch-row" + (disabled ? " locked" : "");
+      const label = document.createElement("span");
+      label.className = "switch-key";
+      label.textContent = pk ? pk.name : ("0x" + vk.toString(16));
+      row.appendChild(label);
+      row.appendChild(makeSwitchPicker(current, disabled, (val) => {
+        MiRC003.Keymap.setSwitchTarget(keymap, vk, val);
+        dirty = true;
+        updateDirtyIndicator();
+        toast("已修改，点击「保存到设备」生效");
+        renderSwitchMap();
+      }));
+      host.appendChild(row);
+    };
+
+    addRow(SWITCH_LOCKED_KEY, true, 0);
+    SWITCH_EDITABLE_KEYS.forEach((vk) =>
+      addRow(vk, false, MiRC003.Keymap.getSwitchTarget(keymap, vk)));
+  }
+
   /* ------------------------- action editor ------------------------- */
 
   let editingKey = null;
@@ -521,6 +632,9 @@
       { label: "移动→", type: 14, dir: "right", speed: 8 },
       { label: "滚轮↑", type: 15, wheel: 3 },
       { label: "滚轮↓", type: 15, wheel: -3 },
+    ]},
+    { g: "配置", items: [
+      { label: "进入配置切换模式", type: 16 },
     ]},
   ];
 
@@ -566,7 +680,6 @@
     set(".f-type", p.type);
     if (p.key != null) { setPickerKey(block, "f-key", p.key); }
     if (p.cons != null) { setPickerKey(block, "f-cons", p.cons); }
-    if (p.layer != null) set("input.f-layer", p.layer);
     if (p.mouseBtn != null) set(".f-mousebtn", p.mouseBtn);
     if (p.dir != null) { set(".f-move-dir", p.dir); set(".f-move-speed", p.speed ?? 8); }
     if (p.wheel != null) {
@@ -611,7 +724,8 @@
 
   function actionTypeOptions(selected) {
     // Mouse-button release (13) is internal-only and not user-selectable.
-    const allowed = [0, 1, 2, 4, 7, 9, 10, 11, 12, 14, 15];
+    // Layer switching (9) was replaced by the modal switch mode (16).
+    const allowed = [0, 1, 2, 4, 7, 10, 11, 12, 14, 15, 16];
     return allowed.map((t) => `<option value="${t}" ${t === selected ? "selected" : ""}>${ACTION[t]}</option>`).join("");
   }
 
@@ -718,7 +832,6 @@
     const mod = b[prefix + "_mod"] ?? 0;
     const key = b[prefix + "_key"] ?? 0;
     const cons = b[prefix + "_cons"] ?? 0;
-    const layer = b[prefix + "_layer"] ?? 0;
     const wheel = b[prefix + "_wheel"] ?? 0;
     const mdx = b[prefix + "_dx"] ?? 0;
     const mdy = b[prefix + "_dy"] ?? 0;
@@ -796,9 +909,6 @@
         <div class="f-consumer">
           <div class="field"><label>多媒体键</label><select class="f-cons">${consumerOptions}</select></div>
         </div>
-        <div class="f-layer">
-          <div class="field"><label>目标配置 (1-4)</label><input type="number" class="f-layer" value="${layer}" min="0" max="4"/></div>
-        </div>
         <div class="f-mouse">
           <div class="field"><label>鼠标按键</label><select class="f-mousebtn">${mouseButtonOptions}</select></div>
         </div>
@@ -841,7 +951,6 @@
       const voice = block.querySelector(".f-voice");
       if (voice) voice.style.display = (type === 7) ? "block" : "none";
       block.querySelector(".f-consumer").style.display = (type === 4) ? "block" : "none";
-      block.querySelector(".f-layer").style.display = (type === 9) ? "block" : "none";
       block.querySelector(".f-mouse").style.display = (type === 11 || type === 12) ? "block" : "none";
       block.querySelector(".f-move").style.display = (type === 14) ? "block" : "none";
       block.querySelector(".f-wheel").style.display = (type === 15) ? "block" : "none";
@@ -875,7 +984,6 @@
       mod,
       key: keyVal,
       cons: consVal,
-      layer: parseInt(block.querySelector("input.f-layer")?.value || "0", 10),
       mouseBtn: parseInt(block.querySelector(".f-mousebtn")?.value || "0", 10),
       dx: mdx,
       dy: mdy,
@@ -978,8 +1086,6 @@
         b[prefix + "_key"] = cfg.key;
       } else if (cfg.type === 4) {
         b[prefix + "_cons"] = cfg.cons;
-      } else if (cfg.type === 9) {
-        b[prefix + "_layer"] = cfg.layer;
       } else if (cfg.type === 11 || cfg.type === 12 || cfg.type === 13) {
         b[prefix + "_key"] = cfg.mouseBtn;
       } else if (cfg.type === 14) {
@@ -1026,7 +1132,7 @@
 
   function startAutoRefresh() {
     stopAutoRefresh();
-    statusTimer = setInterval(refreshStatus, 2000);
+    statusTimer = setInterval(refreshStatus, 1000);
     logTimer = setInterval(() => {
       if ($("log-auto").checked) refreshLogs();
     }, 3000);
@@ -1066,6 +1172,17 @@
     initTabs();
 
     dev.on("disconnect", () => { stopAutoRefresh(); setConnected(false); toast("设备已拔出", true); });
+
+    // Refresh immediately when the tab/window regains focus instead of waiting
+    // for the next poll tick.
+    const refreshOnReturn = () => {
+      if (!dev.isConnected() || document.hidden) return;
+      refreshStatus();
+      refreshBleInfo();
+      if ($("log-auto") && $("log-auto").checked) refreshLogs();
+    };
+    document.addEventListener("visibilitychange", refreshOnReturn);
+    window.addEventListener("focus", refreshOnReturn);
 
     $("btn-connect").onclick = connect;
     $("btn-disconnect").onclick = disconnect;
@@ -1130,6 +1247,34 @@
     document.addEventListener("change", (e) => {
       if (e.target.classList.contains("f-type")) refreshFieldVisibility();
     });
+    document.addEventListener("click", () => {
+      document.querySelectorAll(".switch-picker-menu").forEach((m) => m.classList.add("hidden"));
+    });
+
+    // Configuration-switch mode modal.
+    let switchBackup = null;
+    const closeSwitchModal = (revert) => {
+      if (revert && switchBackup && keymap) keymap.switch_map = switchBackup;
+      switchBackup = null;
+      $("switch-modal").classList.add("hidden");
+      renderSwitchMap();
+    };
+    const switchOpen = $("btn-switch-open");
+    if (switchOpen) switchOpen.onclick = () => {
+      if (!keymap) { toast("请先连接设备并读取按键配置", true); return; }
+      switchBackup = JSON.parse(JSON.stringify(keymap.switch_map || []));
+      renderSwitchMap();
+      $("switch-modal").classList.remove("hidden");
+    };
+    $("switch-modal-close").onclick = $("switch-modal-cancel").onclick = () => closeSwitchModal(true);
+    $("switch-modal-apply").onclick = () => {
+      switchBackup = null;
+      $("switch-modal").classList.add("hidden");
+      dirty = true;
+      updateDirtyIndicator();
+      renderSwitchMap();
+      toast("已修改，点击「保存到设备」生效");
+    };
 
     setConnected(false);
   }

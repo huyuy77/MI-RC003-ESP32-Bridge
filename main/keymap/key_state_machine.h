@@ -25,7 +25,8 @@ typedef enum {
     ACTION_MOUSE_BUTTON_HOLD,   // Press and hold a mouse button
     ACTION_MOUSE_BUTTON_RELEASE,// Internal: release a held mouse button on key-up
     ACTION_MOUSE_MOVE,          // Relative cursor move (dx, dy)
-    ACTION_MOUSE_WHEEL          // Relative wheel scroll
+    ACTION_MOUSE_WHEEL,         // Relative wheel scroll
+    ACTION_ENTER_SWITCH_MODE    // Enter the configuration switch mode (modal)
 } key_action_type_t;
 
 typedef struct {
@@ -82,6 +83,15 @@ typedef struct {
 #define MAX_KEY_BINDINGS   16
 #define MAX_LAYERS         5
 #define MAX_LAYER_NAME_LEN 24
+#define MAX_SWITCH_MAP     16
+
+// One entry of the global configuration-switch map: pressing the physical key
+// `source_vk` while the switch mode is active selects `target_layer`. One key
+// maps to exactly one configuration, but several keys may target the same one.
+typedef struct {
+    uint8_t source_vk;
+    uint8_t target_layer;
+} key_switch_map_entry_t;
 
 typedef enum {
     LAYER_TYPE_PERSISTENT = 0,
@@ -108,12 +118,31 @@ typedef struct {
     key_slot_state_t      states[MAX_KEY_BINDINGS];
     key_output_callback_t output_cb;
     key_event_telemetry_t last_telemetry;
+    // Global configuration-switch map (see ACTION_ENTER_SWITCH_MODE).
+    key_switch_map_entry_t switch_map[MAX_SWITCH_MAP];
+    size_t                 switch_map_count;
+    bool                   switch_mode_active;
+    uint32_t               switch_mode_enter_ms;
+    uint32_t               switch_mode_last_activity_ms;
+    bool                   switch_mode_via_tv_rapid;
+    // Bumped whenever the stored configuration (layers/bindings/switch map)
+    // changes, so clients can detect device-side updates.
+    uint32_t               config_rev;
 } key_mapper_engine_t;
 
 void key_engine_init(key_mapper_engine_t *engine, key_output_callback_t cb);
 void key_engine_load_defaults(key_mapper_engine_t *engine);
 void key_engine_switch_layer(key_mapper_engine_t *engine, uint8_t target_layer, uint32_t now_ms);
 uint8_t key_engine_get_active_layer(const key_mapper_engine_t *engine);
+
+/** @brief Enter the modal configuration-switch mode (LED breathes). */
+void key_engine_enter_switch_mode(key_mapper_engine_t *engine, uint32_t now_ms, bool via_tv_rapid);
+
+/** @brief Leave the configuration-switch mode without switching. */
+void key_engine_exit_switch_mode(key_mapper_engine_t *engine);
+
+/** @brief True while the configuration-switch mode is active. */
+bool key_engine_switch_mode_active(const key_mapper_engine_t *engine);
 bool key_engine_set_layer_binding(key_mapper_engine_t *engine, uint8_t layer_idx, const key_binding_t *binding);
 bool key_engine_get_layer_binding(const key_mapper_engine_t *engine, uint8_t layer_idx, uint8_t source_vk, key_binding_t *out_binding);
 bool key_engine_set_binding(key_mapper_engine_t *engine, const key_binding_t *binding);

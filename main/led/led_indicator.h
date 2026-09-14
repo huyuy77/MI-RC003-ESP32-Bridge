@@ -21,6 +21,8 @@ void led_indicator_set(led_state_t state);
  * Cleared automatically when every key/button is released. */
 void led_indicator_set_hid_active(bool active);
 void led_indicator_set_layer_color(uint32_t rgb_color);
+/* Breathe the current configuration colour while the switch mode is active. */
+void led_indicator_set_switch_mode(bool active);
 
 #ifdef __cplusplus
 }

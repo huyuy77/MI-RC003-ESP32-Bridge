@@ -106,11 +106,28 @@ MiRC003.ACTION[1]              // "键盘-单击"
 | `CONSUMER_TAP` | 4 | `MOUSE_BUTTON_RELEASE` | 13 |
 | `CONSUMER_HOLD` | 5 | `MOUSE_MOVE` | 14 |
 | `CONSUMER_RELEASE` | 6 | `MOUSE_WHEEL` | 15 |
-| `VOICE` | 7 | | |
+| `VOICE` | 7 | `ENTER_SWITCH_MODE` | 16 |
 | `VOICE_RELEASE` | 8 | | |
 
 > `MOUSE_BUTTON_RELEASE`（13）为固件内部使用（松开鼠标按住键时自动发出），
 > 默认 UI 不再提供该选项；此处保留常量以便解析遥测数据。
+>
+> `SWITCH_LAYER`（9，立即切换配置）为旧接口，默认 UI 已不再提供；请改用
+> `ENTER_SWITCH_MODE`（16）。此处保留常量以便解析旧配置与遥测数据。
+
+### 配置切换模式（`ENTER_SWITCH_MODE`）
+
+把某个按键的任一动作设为 `ENTER_SWITCH_MODE` 后，触发该动作会进入**配置切换模式**：
+
+- 进入后屏蔽普通按键输出，指示灯以**当前配置颜色呼吸闪烁**。
+- 按全局映射表（见 [`switch_map`](#5-keymap-json-结构)）中的按键会切换到对应配置并自动退出；
+  默认映射为：方向上/右/下/左 → 配置 1/2/3/4。「确定键」被固件**锁定为默认配置**，不参与映射表。
+- 再次按「当前配置中绑定为进入切换模式」的按键退出（其它配置里的绑定不算数）；「返回键」始终可退出。
+  电视键仅在「由连按 5 次进入」或「当前配置绑定为切换键」时才能退出（进入满 2 秒后）。
+  约 5 秒无操作自动退出（模式内任意按键都会重新计时）。
+- 快速连按「电视键」5 次进入后，2 秒内忽略电视键，避免连按的尾键立即退出。
+- 出厂默认把**长按电视键**设为进入切换模式（短按电视键仍为 F8）。
+- 兜底：快速连按「电视键」5 次（1.5 秒内）也会进入切换模式，用于当前配置未设置切换按键的情况。
 
 ### `MiRC003.GESTURES` — 手势名
 
@@ -157,6 +174,22 @@ MiRC003.ACTION[1]              // "键盘-单击"
 | 右列第 1 行 | 竖胶囊型上部中号圆形 | 音量+ | `0x80` |
 | 右列第 2 行 | 竖胶囊型下部中号圆形 | 音量- | `0x81` |
 | 右列第 3 行 | 中号圆形 | 电视键 | `0xc0` |
+
+### `MiRC003.SWITCH_MAP_DEFAULT` — 默认配置切换映射
+
+```js
+[
+  { source_vk: 0x52, layer: 1 }, // 方向上 -> 配置 1
+  { source_vk: 0x4f, layer: 2 }, // 方向右 -> 配置 2
+  { source_vk: 0x51, layer: 3 }, // 方向下 -> 配置 3
+  { source_vk: 0x50, layer: 4 }, // 方向左 -> 配置 4
+]
+```
+
+对应 Keymap JSON 的顶层 `switch_map` 字段；详见[第 5 节](#5-keymap-json-结构)。
+
+> `MiRC003.SWITCH_MAP_LOCKED`（`{ source_vk: 0x28, layer: 0 }`）表示「确定键」被固件锁定为
+> 默认配置，不可修改，也不应写入 `switch_map`。
 
 ### `MiRC003.MOD_BITS` — 键盘修饰键位
 
@@ -244,12 +277,14 @@ dev.send(cmd, payloadObj?, rawBytes?)
 | 方法 | 返回 |
 | :--- | :--- |
 | `deviceInfo()` | `Promise<{ name, version, build, hardware, protocol, capabilities[] }>` |
-| `status()` | `Promise<{ firmware, version, build, uptime_sec, ble_state, active_layer, battery, frames_decoded, samples_pushed, free_heap, free_psram, usb_mounted }>` |
-| `telemetry()` | `Promise<{ source_vk, is_pressed, pressed_vk, duration_ms, action_type, modifier, key_code, consumer_code, active_layer }>` |
+| `status()` | `Promise<{ firmware, version, build, uptime_sec, ble_state, active_layer, battery, frames_decoded, samples_pushed, free_heap, free_psram, usb_mounted, switch_mode, config_rev }>` |
+| `telemetry()` | `Promise<{ source_vk, is_pressed, pressed_vk, duration_ms, action_type, modifier, key_code, consumer_code, active_layer, switch_mode }>` |
 
 - `ble_state`：`0` 未连接 / `1` 扫描中 / `2` 连接中 / `3` 已连接 / `4` 语音中。
 - `battery`：遥控器电量百分比（`0`~`100`），未知时为 `-1`。
 - `telemetry().pressed_vk`：当前按下的物理键码，`0` 表示未按下。
+- `switch_mode`：配置切换模式是否激活。
+- `config_rev`：配置版本号，设备侧配置（层/绑定/切换映射）每次变更时递增；客户端可据此判断是否需要重新读取 keymap。
 
 ### 按键映射
 
@@ -317,6 +352,10 @@ MiRC003.Keymap.action(MiRC003.ACTIONS.KEYBOARD_TAP, {
 | `getBinding(layer, sourceVk)` | 读取某键的绑定，返回 binding 或 `null` |
 | `ensureBinding(layer, sourceVk)` | 读取或新建绑定 |
 | `removeBinding(layer, sourceVk)` | 删除某键的绑定，返回是否发生变化 |
+| `getSwitchMap(keymap)` | 读取全局配置切换映射数组（缺省返回 `[]`） |
+| `getSwitchTarget(keymap, sourceVk)` | 读取某键在切换映射中的目标配置，未映射返回 `-1` |
+| `setSwitchTarget(keymap, sourceVk, layer)` | 设置某键的目标配置（`layer < 0` 表示移除）；返回条目或 `null` |
+| `removeSwitchTarget(keymap, sourceVk)` | 从切换映射中移除某键，返回是否发生变化 |
 | `setGesture(layer, sourceVk, gesture, action)` | 设置/清除手势；`action` 传 `null` 清除；返回 binding |
 | `getGesture(layer, sourceVk, gesture)` | 以动作对象读回手势，未设置返回 `null` |
 | `describe(layer, sourceVk)` | 生成可读的映射摘要 |
@@ -365,6 +404,12 @@ await dev.saveKeymap(km);
 ```jsonc
 {
   "active_layer": 0,
+  "switch_map": [
+    { "source_vk": 82, "layer": 1 },   // 方向上 -> 配置 1
+    { "source_vk": 79, "layer": 2 },   // 方向右 -> 配置 2
+    { "source_vk": 81, "layer": 3 },   // 方向下 -> 配置 3
+    { "source_vk": 80, "layer": 4 }    // 方向左 -> 配置 4
+  ],
   "layers": [
     {
       "id": 0,                 // 0..4
@@ -407,6 +452,10 @@ await dev.saveKeymap(km);
 - `has_repeat`：连发（音量键常用）；`repeat_*` 同前缀规则。
 - `type=10`（穿透继承）：该动作沿用默认配置的设置。
 - 各配置方案相互独立：只有在该配置里设置过的按键才会生效；未设置的手势不会继承默认配置，除非显式设为 `type=10`。
+- `switch_map`：全局「配置切换模式」映射，数组项为 `{ source_vk, layer }`。进入切换模式后按下
+  `source_vk` 即切换到 `layer`；同一个 `source_vk` 只应出现一次，多个按键可指向同一配置。
+  缺省值见 `MiRC003.SWITCH_MAP_DEFAULT`（上/右/下/左→1/2/3/4）。「确定键」由固件锁定为默认配置，
+  无需也不应写入本表。
 
 > 推荐使用 [`MiRC003.Keymap`](#4-mirc003keymap-工具) 读写上述字段，避免手写出错。
 

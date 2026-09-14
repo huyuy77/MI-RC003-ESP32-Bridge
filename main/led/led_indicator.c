@@ -5,6 +5,7 @@
 #include "freertos/task.h"
 #include "esp_timer.h"
 #include "led_strip.h"
+#include <math.h>
 
 static led_strip_handle_t s_strip = NULL;
 
@@ -25,6 +26,12 @@ static bool s_hid_active = false;
 
 static uint32_t s_layer_color = 0x00FF00;
 static bool     s_layer_flash = false;
+
+// Configuration-switch mode: breathe the current configuration colour.
+static bool s_switch_mode = false;
+#define SWITCH_BREATH_PERIOD_US (1500 * 1000)
+#define SWITCH_BREATH_MIN       6
+#define SWITCH_BREATH_MAX       40
 
 static void write_pixel(uint8_t r, uint8_t g, uint8_t b)
 {
@@ -69,6 +76,20 @@ static void render_state(led_state_t state, bool show_layer_color, uint32_t laye
     }
 }
 
+// Smoothly breathe the active configuration colour while the switch mode is on.
+static void render_breathing(uint32_t layer_color)
+{
+    uint32_t color = (layer_color == 0) ? 0x00FF00 : layer_color;
+    float phase = (float)(esp_timer_get_time() % SWITCH_BREATH_PERIOD_US) /
+                  (float)SWITCH_BREATH_PERIOD_US;
+    float wave = 0.5f - 0.5f * cosf(2.0f * 3.14159265f * phase);
+    float scale = (SWITCH_BREATH_MIN + (SWITCH_BREATH_MAX - SWITCH_BREATH_MIN) * wave) / 255.0f;
+    uint8_t r = (uint8_t)(((color >> 16) & 0xFF) * scale);
+    uint8_t g = (uint8_t)(((color >> 8) & 0xFF) * scale);
+    uint8_t b = (uint8_t)((color & 0xFF) * scale);
+    write_pixel(r, g, b);
+}
+
 static void led_task(void *arg)
 {
     (void)arg;
@@ -76,6 +97,8 @@ static void led_task(void *arg)
         led_state_t state;
         bool show_layer_color;
         uint32_t layer_color;
+        bool flashing;
+        bool switch_mode;
 
         portENTER_CRITICAL(&s_led_mux);
         if (s_is_flashing && esp_timer_get_time() > s_flash_expire_us) {
@@ -94,9 +117,15 @@ static void led_task(void *arg)
         }
         show_layer_color = s_layer_flash && s_is_flashing;
         layer_color = s_layer_color;
+        flashing = s_is_flashing;
+        switch_mode = s_switch_mode;
         portEXIT_CRITICAL(&s_led_mux);
 
-        render_state(state, show_layer_color, layer_color);
+        if (!flashing && switch_mode) {
+            render_breathing(layer_color);
+        } else {
+            render_state(state, show_layer_color, layer_color);
+        }
         vTaskDelay(pdMS_TO_TICKS(20));
     }
 }
@@ -148,5 +177,12 @@ void led_indicator_set_layer_color(uint32_t rgb_color)
     s_layer_flash = true;
     s_flash_expire_us = esp_timer_get_time() + 200 * 1000;
     s_is_flashing = true;
+    portEXIT_CRITICAL(&s_led_mux);
+}
+
+void led_indicator_set_switch_mode(bool active)
+{
+    portENTER_CRITICAL(&s_led_mux);
+    s_switch_mode = active;
     portEXIT_CRITICAL(&s_led_mux);
 }

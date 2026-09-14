@@ -75,7 +75,7 @@ size_t webusb_protocol_handle(uint8_t cmd, const uint8_t *payload, size_t payloa
                 "{\"firmware\":\"%s\",\"version\":\"%s\",\"build\":\"%s\",\"uptime_sec\":%llu,"
                 "\"ble_state\":%d,\"active_layer\":%u,\"battery\":%d,\"frames_decoded\":%u,"
                 "\"samples_pushed\":%u,\"free_heap\":%u,\"free_psram\":%u,"
-                "\"usb_mounted\":%s}",
+                "\"usb_mounted\":%s,\"switch_mode\":%s,\"config_rev\":%u}",
                 FIRMWARE_NAME, FIRMWARE_VERSION, FIRMWARE_BUILD,
                 (unsigned long long)(esp_timer_get_time() / 1000000),
                 (int)ble_remote_get_state(),
@@ -85,7 +85,9 @@ size_t webusb_protocol_handle(uint8_t cmd, const uint8_t *payload, size_t payloa
                 (unsigned)g_audio_pipeline.total_samples_pushed,
                 (unsigned)esp_get_free_heap_size(),
                 (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM),
-                usb_composite_is_mounted() ? "true" : "false");
+                usb_composite_is_mounted() ? "true" : "false",
+                key_engine_switch_mode_active(&g_key_engine) ? "true" : "false",
+                (unsigned)g_key_engine.config_rev);
             return w;
         }
 

@@ -163,3 +163,17 @@ dist/
 - 固件为 C/C++（ESP-IDF），浏览器端为原生 JS，均**不引入构建步骤**（站点直接引用源文件）。
 - 跟随既有命名与文件组织；新增模块放入 `main/<域>/` 并在 `main/CMakeLists.txt` 登记。
 - 除非被要求，不要添加注释、不要提交 `build/`、`dist/` 等生成物、不要自动修改版本号。
+
+## 8. Windows 脚本与中文编码
+
+- 运行环境为 **Windows PowerShell 5.1**，它按系统 ANSI 代码页（简体中文为 GBK/936）解析
+  **无 BOM** 的脚本文件。用工具生成的 `.ps1` 通常是无 BOM 的 UTF-8，其中的中文字面量
+  会被误读为 GBK，导致控制台输出或经 API 写入的内容出现**乱码**。
+- 规避方式（二选一）：
+  1. 含中文字面量的 `.ps1` 保存为 **UTF-8 with BOM**；或
+  2. 脚本保持纯 ASCII，把中文放入单独的 UTF-8 数据文件，用
+     `[System.IO.File]::ReadAllText($path, [System.Text.Encoding]::UTF8)` 读取。
+- 通过 GitHub API 写入中文（如 Release 说明）时，请求体必须用 UTF-8 字节发送：
+  `[System.Text.Encoding]::UTF8.GetBytes($json)`，并设置
+  `Content-Type: application/json; charset=utf-8`。
+- 写入后应校验服务端返回文本与本地 UTF-8 源一致（例如比较 API 返回的 `body` 与源文件内容）。
