@@ -1,0 +1,491 @@
+# MI-RC003 Bridge · WebUSB API 参考
+
+> 本文档是 `webusb-config/assets/mi-rc003.js` 的**权威 API 参考**。
+>
+> - 库文件：[`assets/mi-rc003.js`](./assets/mi-rc003.js)
+> - 默认界面示例：[`assets/app.js`](./assets/app.js)
+> - 旧版说明（保留）：[`doc.md`](./doc.md)
+
+---
+
+## 目录
+
+1. [加载与快速开始](#1-加载与快速开始)
+2. [常量](#2-常量)
+3. [`MiRC003` 客户端](#3-mirc003-客户端)
+4. [`MiRC003.Keymap` 工具](#4-mirc003keymap-工具)
+5. [Keymap JSON 结构](#5-keymap-json-结构)
+6. [WebUSB 线协议](#6-webusb-线协议)
+7. [错误处理](#7-错误处理)
+8. [兼容性](#8-兼容性)
+9. [维护约定](#9-维护约定)
+
+---
+
+## 1. 加载与快速开始
+
+`mi-rc003.js` 是一个无依赖的浏览器端脚本，挂载全局 `MiRC003`。
+
+```html
+<script src="assets/mi-rc003.js"></script>
+<script>
+  const dev = new MiRC003();
+
+  (async () => {
+    await dev.connect();                       // 弹出设备选择框
+    console.log(await dev.status());           // 读取状态
+
+    const keymap = await dev.getKeymap();
+    const layer = MiRC003.Keymap.findLayer(keymap, 0);
+    MiRC003.Keymap.setGesture(layer, 0x28, "click",
+      MiRC003.Keymap.action(MiRC003.ACTIONS.KEYBOARD_TAP, { keyCode: 0x28 }));
+    await dev.saveKeymap(keymap);              // 分块上传并落盘
+  })();
+</script>
+```
+
+> WebUSB 需要**安全上下文**：`https://` 或 `http://localhost`。
+> 桌面版 Chrome / Edge 支持，移动端浏览器不支持。
+
+---
+
+## 2. 常量
+
+所有常量挂在 `MiRC003` 上，例如 `MiRC003.CMD.STATUS`。
+
+### `MiRC003.CMD` — 命令字
+
+| 键 | 值 | 说明 |
+| :--- | :--- | :--- |
+| `DEVICE_INFO` | `0x50` | 设备信息 |
+| `STATUS` | `0x01` | 运行状态 |
+| `LOGS_GET` | `0x02` | 读取日志 |
+| `LOGS_CLEAR` | `0x03` | 清空日志 |
+| `KEYMAP_GET` | `0x10` | 读取按键映射 |
+| `KEYMAP_SAVE` | `0x11` | 单帧保存（兼容旧接口） |
+| `KEYMAP_RESET` | `0x12` | 恢复默认按键 |
+| `KEYMAP_TELEMETRY` | `0x13` | 最近按键遥测 |
+| `KEYMAP_BEGIN` | `0x15` | 分块上传开始 |
+| `KEYMAP_DATA` | `0x16` | 分块上传数据 |
+| `KEYMAP_COMMIT` | `0x17` | 分块上传提交 |
+| `SET_LAYER` | `0x18` | 切换设备当前配置（层） |
+| `BLE_SCAN` | `0x20` | 扫描蓝牙 |
+| `BLE_CONNECT` | `0x21` | 连接指定设备 |
+| `BLE_UNPAIR` | `0x22` | 解除绑定 |
+| `BLE_INFO` | `0x23` | 已绑定信息 |
+| `BLE_RECONNECT` | `0x24` | 重新连接 |
+| `NVS_RESET` | `0x31` | 恢复出厂（清空 NVS） |
+| `SYSTEM_RESTART` | `0x40` | 重启设备 |
+
+### `MiRC003.STATUS` — 响应状态码
+
+```js
+{ OK: 0, ERR_CMD: 1, ERR_ARG: 2, ERR_INTERNAL: 3 }
+```
+
+### `MiRC003.ACTIONS` / `MiRC003.ACTION` — 动作类型
+
+`ACTIONS` 是数值常量，`ACTION` 是「类型 → 中文名」映射。
+
+```js
+MiRC003.ACTIONS.KEYBOARD_TAP   // 1
+MiRC003.ACTIONS.CONSUMER_TAP   // 4
+MiRC003.ACTIONS.MOUSE_MOVE     // 14
+
+MiRC003.ACTION[1]              // "键盘-单击"
+```
+
+完整数值：
+
+| 名称 | 值 | 名称 | 值 |
+| :--- | :--- | :--- | :--- |
+| `NONE` | 0 | `SWITCH_LAYER` | 9 |
+| `KEYBOARD_TAP` | 1 | `TRANSPARENT` | 10 |
+| `KEYBOARD_HOLD` | 2 | `MOUSE_BUTTON_TAP` | 11 |
+| `KEYBOARD_RELEASE` | 3 | `MOUSE_BUTTON_HOLD` | 12 |
+| `CONSUMER_TAP` | 4 | `MOUSE_BUTTON_RELEASE` | 13 |
+| `CONSUMER_HOLD` | 5 | `MOUSE_MOVE` | 14 |
+| `CONSUMER_RELEASE` | 6 | `MOUSE_WHEEL` | 15 |
+| `VOICE` | 7 | | |
+| `VOICE_RELEASE` | 8 | | |
+
+> `MOUSE_BUTTON_RELEASE`（13）为固件内部使用（松开鼠标按住键时自动发出），
+> 默认 UI 不再提供该选项；此处保留常量以便解析遥测数据。
+
+### `MiRC003.GESTURES` — 手势名
+
+```js
+{ CLICK: "click", LONG: "long", DOUBLE: "double", REPEAT: "repeat" }
+```
+
+### `MiRC003.PHYSICAL_KEYS` — 遥控器物理按键
+
+```js
+[ { vk: 0x66, name: "电源键" }, { vk: 0x04, name: "语音键" }, ... ]
+```
+
+`vk` 即绑定中的 `source_vk`（内部规范化键码）。
+
+#### 遥控器按键位置参考
+
+遥控器正视布局如下，第三方可据此自行绘制遥控器 UI：
+
+| 左列 | 中列 | 右列 |
+| :--- | :--- | :--- |
+| 电源键（小号圆形） |  | 语音键（小号圆形） |
+|  | 上键（上侧四分之一圆环） |  |
+| 左键（左侧四分之一圆环） | 确认键（圆环内分隔开大号圆形） | 右键（右侧四分之一圆环） |
+|  | 下键（下侧四分之一圆环） |  |
+| 返回键（中号圆形） |  | 音量加（竖胶囊型上部中号圆形） |
+| 主页键（中号圆形） |  | 音量减（竖胶囊型下部中号圆形） |
+| 菜单键（中号圆形） |  | TV 键（中号圆形） |
+
+各按键对应的规范化键码（`PHYSICAL_KEYS` 中的 `name` / `vk`）：
+
+| 位置 | 形状 | `PHYSICAL_KEYS` 名称 | `vk` |
+| :--- | :--- | :--- | :--- |
+| 左上 | 小号圆形 | 电源键 | `0x66` |
+| 右上 | 小号圆形 | 语音键 | `0x04` |
+| 方向环上 | 上侧四分之一圆环 | 方向上 | `0x52` |
+| 方向环下 | 下侧四分之一圆环 | 方向下 | `0x51` |
+| 方向环左 | 左侧四分之一圆环 | 方向左 | `0x50` |
+| 方向环右 | 右侧四分之一圆环 | 方向右 | `0x4f` |
+| 方向环中心 | 圆环内分隔开的大号圆形 | 确定键 | `0x28` |
+| 左列第 1 行 | 中号圆形 | 返回键 | `0xf1` |
+| 左列第 2 行 | 中号圆形 | 主页键 | `0x24` |
+| 左列第 3 行 | 中号圆形 | 菜单键 | `0x5d` |
+| 右列第 1 行 | 竖胶囊型上部中号圆形 | 音量+ | `0x80` |
+| 右列第 2 行 | 竖胶囊型下部中号圆形 | 音量- | `0x81` |
+| 右列第 3 行 | 中号圆形 | 电视键 | `0xc0` |
+
+### `MiRC003.MOD_BITS` — 键盘修饰键位
+
+```js
+[ [0x01,"左Ctrl"], [0x02,"左Shift"], [0x04,"左Alt"], [0x08,"左Win"],
+  [0x10,"右Ctrl"], [0x20,"右Shift"], [0x40,"右Alt"], [0x80,"右Win"] ]
+```
+
+用于键盘类动作的 `*_mod`。
+
+### `MiRC003.MOUSE_BUTTONS` — 鼠标按键位
+
+```js
+[ [0x01,"左键"], [0x02,"右键"], [0x04,"中键"], [0x08,"后退键"], [0x10,"前进键"] ]
+```
+
+用于鼠标按键类动作的 `*_key`（按钮位掩码）。
+
+### `MiRC003.HID_GROUPS` / `MiRC003.HID_EXTRA_GROUPS` / `MiRC003.CONSUMER_GROUPS`
+
+键码分组，格式 `[组名, [[usage, 名称], ...]]`，可直接用于生成 `<optgroup>/<option>`：
+
+```js
+MiRC003.HID_GROUPS        // 屏幕键盘上的键：字母/数字/常用/符号/功能键/导航/小键盘
+MiRC003.HID_EXTRA_GROUPS  // 屏幕键盘上没有、但 Windows 支持的常用键：
+                          //   F13-F24、常用编辑/应用键（撤销/剪切/复制/粘贴/查找/静音/音量）
+MiRC003.CONSUMER_GROUPS   // 多媒体：媒体/音量/系统/浏览器
+```
+
+> 默认界面按键编辑器里的「扩展按键」下拉框数据即来自 `HID_EXTRA_GROUPS`。
+
+---
+
+## 3. `MiRC003` 客户端
+
+### 构造
+
+```js
+const dev = new MiRC003(options);
+```
+
+| 选项 | 类型 | 默认 | 说明 |
+| :--- | :--- | :--- | :--- |
+| `vendorId` | `number` | `0x303A` | 匹配的 USB VID |
+| `productId` | `number` | `0x8304` | 匹配的 USB PID |
+| `saveChunk` | `number` | `64` | 保存时每个 `KEYMAP_DATA` 分块字节数 |
+
+### 连接与生命周期
+
+| 方法 | 返回 | 说明 |
+| :--- | :--- | :--- |
+| `connect()` | `Promise<MiRC003>` | 弹出选择框、打开设备并占用 WebUSB 厂商接口 |
+| `disconnect()` | `Promise<void>` | 关闭设备（未连接时为空操作） |
+| `isConnected()` | `boolean` | 是否已连接并占用接口 |
+
+### 事件
+
+```js
+dev.on("connect",    (info) => {});  // info = { outEndpoint, inEndpoint }
+dev.on("disconnect", ()     => {});
+dev.on("error",      (err)  => {});
+dev.off("disconnect", handler);
+```
+
+> 设备被拔出时触发 `disconnect`。`on()` 返回 `this`，可链式调用。
+
+### 底层传输
+
+```js
+dev.send(cmd, payloadObj?, rawBytes?)
+```
+
+| 参数 | 说明 |
+| :--- | :--- |
+| `cmd` | 命令字，见 `MiRC003.CMD` |
+| `payloadObj` | 可选，会被 `JSON.stringify` 后作为负载 |
+| `rawBytes` | 可选，`Uint8Array`，作为原始负载（优先级高于 `payloadObj`，如 `KEYMAP_DATA`） |
+
+- 所有调用**自动串行化**：同一时刻只有一个请求在途；
+- 返回 `Promise<object>`（解析后的 JSON 响应）；
+- `status != 0` 时 reject，错误信息为 `设备返回错误 (status=N)`。
+
+### 设备 / 状态
+
+| 方法 | 返回 |
+| :--- | :--- |
+| `deviceInfo()` | `Promise<{ name, version, build, hardware, protocol, capabilities[] }>` |
+| `status()` | `Promise<{ firmware, version, build, uptime_sec, ble_state, active_layer, battery, frames_decoded, samples_pushed, free_heap, free_psram, usb_mounted }>` |
+| `telemetry()` | `Promise<{ source_vk, is_pressed, pressed_vk, duration_ms, action_type, modifier, key_code, consumer_code, active_layer }>` |
+
+- `ble_state`：`0` 未连接 / `1` 扫描中 / `2` 连接中 / `3` 已连接 / `4` 语音中。
+- `battery`：遥控器电量百分比（`0`~`100`），未知时为 `-1`。
+- `telemetry().pressed_vk`：当前按下的物理键码，`0` 表示未按下。
+
+### 按键映射
+
+| 方法 | 返回 | 说明 |
+| :--- | :--- | :--- |
+| `getKeymap()` | `Promise<Keymap>` | 读取完整多配置方案 |
+| `saveKeymap(keymap)` | `Promise<object>` | 保存（内部走 `KEYMAP_BEGIN/DATA/COMMIT` 分块上传） |
+| `resetKeymap()` | `Promise<object>` | 恢复出厂按键 |
+| `setLayer(layer)` | `Promise<object>` | 切换设备当前配置（层索引 `0`-`4`） |
+
+`Keymap` 结构见[第 5 节](#5-keymap-json-结构)。
+
+### 蓝牙
+
+| 方法 | 参数 | 返回 |
+| :--- | :--- | :--- |
+| `bleScan()` | — | `Promise<{ devices: [{ name, mac, rssi, type }] }>` |
+| `bleConnect(target)` | `{ mac, type, name }` | `Promise<object>` |
+| `bleUnpair()` | — | `Promise<object>` |
+| `bleInfo()` | — | `Promise<{ connected, state, name, mac, bound_mac, bound_name, battery }>` |
+| `bleReconnect()` | — | `Promise<object>` |
+
+### 日志 / 系统
+
+| 方法 | 返回 | 说明 |
+| :--- | :--- | :--- |
+| `getLogs()` | `Promise<{ logs: string[] }>` | 最近日志 |
+| `clearLogs()` | `Promise<object>` | 清空日志 |
+| `restart()` | `Promise<object>` | 重启设备 |
+| `factoryReset()` | `Promise<object>` | 清空 NVS 并重启 |
+
+---
+
+## 4. `MiRC003.Keymap` 工具
+
+纯函数集合，用于在内存中构建 / 检查 keymap 结构，避免第三方 UI 重复处理
+`has_*`、`*_type` 等字段。所有函数不产生副作用（除 `setGesture` 等会修改传入对象外）。
+
+### `action(type, opts?)`
+
+构造动作对象。
+
+```js
+MiRC003.Keymap.action(MiRC003.ACTIONS.KEYBOARD_TAP, {
+  modifier: 0,        // 修饰键位掩码
+  keyCode: 0x28,      // HID 键码
+  consumerCode: 0,    // 多媒体码
+  targetLayer: 0,     // 目标配置（切换配置）
+  dx: 0, dy: 0,       // 鼠标移动
+  wheel: 0,           // 滚轮
+  ms: 600,            // 长按/双击判定时间
+  delayMs: 350,       // 连发起始延迟
+  intervalMs: 70,     // 连发间隔
+});
+```
+
+返回 `{ type, modifier, keyCode, consumerCode, targetLayer, dx, dy, wheel, ms, delayMs, intervalMs }`。
+
+### 其他方法
+
+| 方法 | 说明 |
+| :--- | :--- |
+| `clone(keymap)` | 深拷贝 keymap |
+| `findLayer(keymap, id)` | 按 `id` 查找配置，返回 layer 或 `null` |
+| `getBinding(layer, sourceVk)` | 读取某键的绑定，返回 binding 或 `null` |
+| `ensureBinding(layer, sourceVk)` | 读取或新建绑定 |
+| `removeBinding(layer, sourceVk)` | 删除某键的绑定，返回是否发生变化 |
+| `setGesture(layer, sourceVk, gesture, action)` | 设置/清除手势；`action` 传 `null` 清除；返回 binding |
+| `getGesture(layer, sourceVk, gesture)` | 以动作对象读回手势，未设置返回 `null` |
+| `describe(layer, sourceVk)` | 生成可读的映射摘要 |
+| `hidName(code)` | HID 键码对应名称（含 `HID_EXTRA_GROUPS`），`0` 返回 `"未选择"` |
+| `validate(keymap)` | 结构校验，返回错误字符串数组（空数组 = 合法） |
+
+### 完整示例
+
+```js
+const km = await dev.getKeymap();
+const layer = MiRC003.Keymap.findLayer(km, 0);
+
+// 单击：键盘 Enter
+MiRC003.Keymap.setGesture(layer, 0x28, "click",
+  MiRC003.Keymap.action(MiRC003.ACTIONS.KEYBOARD_TAP, { keyCode: 0x28 }));
+
+// 长按：多媒体 音量+
+MiRC003.Keymap.setGesture(layer, 0x28, "long",
+  MiRC003.Keymap.action(MiRC003.ACTIONS.CONSUMER_TAP, { consumerCode: 0xe9, ms: 600 }));
+
+// 双击：F13（扩展键，Windows 支持）
+MiRC003.Keymap.setGesture(layer, 0x28, "double",
+  MiRC003.Keymap.action(MiRC003.ACTIONS.KEYBOARD_TAP, { keyCode: 0x68 }));
+
+// 连发：音量+
+MiRC003.Keymap.setGesture(layer, 0x28, "repeat",
+  MiRC003.Keymap.action(MiRC003.ACTIONS.CONSUMER_TAP,
+    { consumerCode: 0xe9, delayMs: 350, intervalMs: 70 }));
+
+// 语音键（0x04）：按住时录音并发送微信语音快捷键（右Alt + ,）
+MiRC003.Keymap.setGesture(layer, 0x04, "click",
+  MiRC003.Keymap.action(MiRC003.ACTIONS.VOICE, { modifier: 0x40, keyCode: 0x36 }));
+
+// 清除长按
+MiRC003.Keymap.setGesture(layer, 0x28, "long", null);
+
+console.log(MiRC003.Keymap.describe(layer, 0x28));
+console.log(MiRC003.Keymap.validate(km));   // []
+await dev.saveKeymap(km);
+```
+
+---
+
+## 5. Keymap JSON 结构
+
+```jsonc
+{
+  "active_layer": 0,
+  "layers": [
+    {
+      "id": 0,                 // 0..4
+      "name": "默认配置",
+      "type": 0,               // 0=永久 1=一次性 2=超时
+      "timeout": 15,           // type=2 时的超时秒数
+      "color": "0x00FF00",     // 该配置指示灯颜色 RGB
+      "bindings": [
+        {
+          "source_vk": 40,     // 物理键码（见 PHYSICAL_KEYS）
+          "has_click": true,
+          "click_type": 1,     // 动作类型，见 ACTIONS
+          "click_mod": 64,     // 修饰键位（键盘动作）
+          "click_key": 54,     // HID 键码（键盘动作）
+          "click_cons": 233,   // 多媒体码（多媒体动作）
+          "click_layer": 2,    // 目标配置（切换配置动作）
+          "has_long": true, "long_ms": 600, "long_type": 4, "long_cons": 205,
+          "has_double": false, "double_ms": 250, "double_type": 1, "double_key": 44,
+          "has_repeat": true, "repeat_type": 4, "repeat_cons": 233,
+          "repeat_delay_ms": 350, "repeat_interval_ms": 70
+        }
+      ]
+    }
+  ]
+}
+```
+
+字段说明：
+
+- `has_click` / `has_long` / `has_double`：是否启用对应手势。
+- 动作字段前缀：`click_` / `long_` / `double_` / `repeat_`，后缀含义：
+  - `_type`：动作类型（见 `ACTIONS`）。
+  - `_mod` / `_key`：键盘修饰键与 HID 键码（键盘类动作）。
+  - `_cons`：USB Consumer 多媒体码（多媒体类动作）。
+  - `_layer`：目标配置（切换配置动作）。
+  - `_key`：鼠标按键位掩码（鼠标按键类动作，见 `MOUSE_BUTTONS`）。
+  - `_dx` / `_dy`：相对移动量（鼠标移动动作，`-127`~`127`；UI 以「方向 + 速度」配置，按住时持续移动，松开停止）。
+  - `_wheel`：滚轮量（鼠标滚轮动作，`-127`~`127`，正数向上）。
+  - `_ms`：长按 / 双击判定时间（仅 long/double）。
+- `has_repeat`：连发（音量键常用）；`repeat_*` 同前缀规则。
+- `type=10`（穿透继承）：该动作沿用默认配置的设置。
+- 各配置方案相互独立：只有在该配置里设置过的按键才会生效；未设置的手势不会继承默认配置，除非显式设为 `type=10`。
+
+> 推荐使用 [`MiRC003.Keymap`](#4-mirc003keymap-工具) 读写上述字段，避免手写出错。
+
+---
+
+## 6. WebUSB 线协议
+
+库已封装，如需自行实现可参考：
+
+**请求帧（主机 → 设备）**
+
+```text
+0     1     2     3        4-5          6..N
+'M'   'R'   cmd   rsvd     len (LE16)   payload (UTF-8 / JSON)
+```
+
+**响应帧（设备 → 主机）**
+
+```text
+0     1     2     3        4-5          6..N
+'M'   'R'   cmd   status   len (LE16)   payload
+```
+
+- `status == 0` 表示成功。
+- 厂商接口：USB class `0xFF`，BULK OUT / BULK IN 端点由浏览器自动识别。
+- 大负载（如保存按键）建议分块发送（库已用 `KEYMAP_BEGIN/DATA/COMMIT` 实现）。
+
+---
+
+## 7. 错误处理
+
+所有异步方法失败时 reject，错误对象为 `Error`：
+
+```js
+try {
+  await dev.connect();
+} catch (e) {
+  if (e.name === "NotFoundError") {
+    // 用户取消了设备选择
+  } else {
+    console.error(e.message);
+  }
+}
+```
+
+| 场景 | 错误信息 |
+| :--- | :--- |
+| 用户取消选择 | `NotFoundError: No device selected` |
+| 设备返回非 0 状态 | `设备返回错误 (status=N)` |
+| 未连接时调用 | `设备未连接` |
+| 浏览器不支持 | `当前浏览器不支持 WebUSB` |
+| 未找到厂商接口 | `未找到 WebUSB 厂商接口` |
+
+---
+
+## 8. 兼容性
+
+- 桌面版 Chrome / Edge（Windows / macOS / Linux）。
+- 页面必须为安全上下文（HTTPS 或 `http://localhost`）。
+- Windows 10/11 自动为厂商接口加载 WinUSB，无需 Zadig。
+- Linux 需配置 udev 规则。
+
+---
+
+## 9. 维护约定
+
+修改 `assets/mi-rc003.js` 的公开 API 时，请同步：
+
+1. 更新本文件 `api.md` 中对应的常量表 / 方法表 / 示例。
+2. 更新 [`README.md`](./README.md) 中的功能与引用（如有变化）。
+3. 运行语法检查：`node --check assets/mi-rc003.js`。
+
+> 版本号由维护者按发布流程统一管理，请勿在此处自行递增。
+
+命令字与响应字段必须与固件保持一致：
+
+| 库 | 固件 |
+| :--- | :--- |
+| `MiRC003.CMD` | `main/webusb/webusb_protocol.h` 的 `CMD_*` |
+| `MiRC003.STATUS` | 同文件的 `WEBUSB_*` |
+| `MiRC003.ACTIONS` | `main/keymap/key_state_machine.h` 的 `ACTION_*` |
+| 遥测字段 | `key_telemetry_to_json()`（`main/keymap/key_config_storage.cpp`） |

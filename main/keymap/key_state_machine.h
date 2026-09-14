@@ -23,7 +23,7 @@ typedef enum {
     ACTION_TRANSPARENT,         // Inherit from Layer 0
     ACTION_MOUSE_BUTTON_TAP,    // Tap a mouse button (down + up)
     ACTION_MOUSE_BUTTON_HOLD,   // Press and hold a mouse button
-    ACTION_MOUSE_BUTTON_RELEASE,// Release mouse button(s)
+    ACTION_MOUSE_BUTTON_RELEASE,// Internal: release a held mouse button on key-up
     ACTION_MOUSE_MOVE,          // Relative cursor move (dx, dy)
     ACTION_MOUSE_WHEEL          // Relative wheel scroll
 } key_action_type_t;

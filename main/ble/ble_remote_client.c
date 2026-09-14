@@ -73,6 +73,10 @@ static uint16_t s_model_chr = 0;
 static bool     s_model_read = false;
 static int      s_battery_level = -1;
 static uint32_t s_battery_last_ms = 0;
+
+// How often to re-read the remote's battery level while connected. Kept slow
+// to limit extra BLE traffic and power draw.
+#define BATTERY_REFRESH_INTERVAL_MS 900000  // 15 minutes
 static uint16_t s_atvv_start = 0, s_atvv_end = 0;
 static uint16_t s_hid_start = 0, s_hid_end = 0;
 
@@ -780,6 +784,7 @@ static int gap_event_cb(struct ble_gap_event *event, void *arg)
             key_engine_release_all(&g_key_engine, now_ms());
             usb_hid_keyboard_release();
             usb_hid_consumer_release();
+            usb_hid_mouse_buttons_release();
             audio_pipeline_stop_session(&g_audio_pipeline);
             led_indicator_set(LED_STATE_WAIT_CONNECTION);
             break;
@@ -1000,7 +1005,7 @@ void ble_remote_task(void)
 
     // Refresh the remote battery level periodically while connected.
     if ((s_state == BLE_STATE_CONNECTED || s_state == BLE_STATE_TALKING) &&
-        s_batt_level_chr && (now - s_battery_last_ms) > 60000) {
+        s_batt_level_chr && (now - s_battery_last_ms) > BATTERY_REFRESH_INTERVAL_MS) {
         read_battery();
     }
 

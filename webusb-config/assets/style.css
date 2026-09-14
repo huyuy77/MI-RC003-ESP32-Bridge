@@ -67,17 +67,6 @@ h1, h2, h3 { margin: 0; font-weight: 600; letter-spacing: -0.015em; }
 }
 
 .brand { display: flex; align-items: center; gap: 14px; }
-.logo {
-  font-weight: 700;
-  font-size: 15px;
-  letter-spacing: 0.04em;
-  color: #fff;
-  padding: 8px 13px;
-  border-radius: 11px;
-  background: linear-gradient(135deg, #1d1d1f 0%, #3a3a3c 100%);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
-}
-.logo span { color: #a1a1a6; font-weight: 500; }
 h1 { font-size: 16px; font-weight: 600; }
 .subtitle { margin: 3px 0 0; color: var(--text-3); font-size: 12px; }
 
@@ -179,27 +168,13 @@ main { max-width: 960px; margin: 0 auto; padding: 28px 24px 100px; }
   border: 1px solid var(--border);
   box-shadow: var(--shadow-xs);
   transition: transform 0.2s ease, box-shadow 0.2s ease;
-  position: relative;
-  overflow: hidden;
-}
-.stat::before {
-  content: "";
-  position: absolute;
-  top: 0; left: 0;
-  width: 3px; height: 100%;
-  background: linear-gradient(180deg, var(--accent) 0%, rgba(0, 113, 227, 0.3) 100%);
-  border-radius: 0 2px 2px 0;
-  opacity: 0.6;
-  transition: opacity 0.2s ease;
 }
 .stat:hover {
   transform: translateY(-2px);
   box-shadow: var(--shadow-md);
 }
-.stat:hover::before { opacity: 1; }
 .stat .label { color: var(--text-3); font-size: 11.5px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.04em; }
 .stat .value { font-size: 22px; font-weight: 700; letter-spacing: -0.025em; line-height: 1.1; }
-.stat .value.small { font-size: 12.5px; font-weight: 500; color: var(--text-2); letter-spacing: 0; }
 
 /* ----------------------------- buttons ----------------------------- */
 .btn {
@@ -316,30 +291,19 @@ a.btn.link:hover { background: var(--accent-soft); border-color: rgba(0, 113, 22
 /* ----------------------------- remote (Xiaomi RC003) ----------------------------- */
 .remote {
   position: relative;
-  width: min(178px, 68vw);
+  width: min(154px, 62vw);
   margin: 0 auto;
-  padding: 30px 22px 36px;
+  padding: 30px 20px 36px;
   display: flex;
   flex-direction: column;
   align-items: center;
   border: none;
   border-radius: 30px;
-  /* Silver/aluminum body — natural lighting from upper-left */
-  background: linear-gradient(105deg, #dddad5 0%, #ccc9c3 40%, #bab6b0 75%, #b0aca6 100%);
+  /* Clean, brighter silver/aluminum body */
+  background: linear-gradient(145deg, #eeedea 0%, #e4e2de 50%, #d8d6d1 100%);
   box-shadow:
-    0 20px 50px rgba(0, 0, 0, 0.16),
-    0 6px 16px rgba(0, 0, 0, 0.08),
-    inset 0 1px 0 rgba(255, 255, 255, 0.55),
-    inset -1px 0 0 rgba(0, 0, 0, 0.06);
-}
-/* Inner bezel */
-.remote::before {
-  content: "";
-  position: absolute;
-  inset: 7px;
-  border-radius: 24px;
-  border: 1px solid rgba(255, 255, 255, 0.28);
-  pointer-events: none;
+    0 18px 40px rgba(0, 0, 0, 0.12),
+    0 4px 12px rgba(0, 0, 0, 0.06);
 }
 /* Top-light sheen */
 .remote::after {
@@ -347,7 +311,7 @@ a.btn.link:hover { background: var(--accent-soft); border-color: rgba(0, 113, 22
   position: absolute;
   inset: 0;
   border-radius: 30px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.15) 0%, transparent 30%);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.12) 0%, transparent 30%);
   pointer-events: none;
 }
 
@@ -358,65 +322,55 @@ a.btn.link:hover { background: var(--accent-soft); border-color: rgba(0, 113, 22
   margin-bottom: 24px;
 }
 
-/* Power & Mic: outlined circles on silver body (not filled dark) */
+/* Power & Mic: flat circles on silver body */
 .utility {
   display: grid;
   place-items: center;
-  background: linear-gradient(160deg, #c2bfb9 0%, #b0aca6 100%);
+  background: #d3d0ca;
   color: #4a4a4a;
-  border: 1.5px solid #8a8580;
+  border: none;
   cursor: pointer;
   font-family: inherit;
-  transition: all 0.18s ease;
+  transition: background 0.18s ease, color 0.18s ease, transform 0.18s ease;
   width: 40px;
   height: 40px;
   border-radius: 50%;
-  box-shadow:
-    0 2px 4px rgba(0, 0, 0, 0.1),
-    inset 0 1px 0 rgba(255, 255, 255, 0.4);
 }
 .utility svg {
   width: 17px; height: 17px; fill: none;
   stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
 }
 .utility:hover {
-  background: linear-gradient(160deg, #ccc9c3 0%, #bbb7b1 100%);
+  background: #c5c1bb;
   color: #2a2a2a;
-  transform: translateY(-1px);
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.5);
 }
 .utility:active {
-  transform: scale(0.95);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1), inset 0 1px 3px rgba(0, 0, 0, 0.08);
+  background: #b7b3ad;
+  transform: scale(0.96);
 }
 
-/* Dark charcoal buttons (back, home, menu, TV, volume) — convex 3D */
+/* Dark charcoal buttons (back, home, menu, TV, volume) — flat */
 .round, .volume button {
   display: grid;
   place-items: center;
-  background: radial-gradient(ellipse at 35% 30%, #3a3b3e 0%, #222324 60%, #1a1b1c 100%);
+  background: #2b2c2f;
   color: #8e8f91;
-  border: 1px solid #4a4b4d;
+  border: none;
   cursor: pointer;
   font-family: inherit;
-  transition: all 0.18s ease;
-  box-shadow:
-    0 3px 8px rgba(0, 0, 0, 0.25),
-    inset 0 1px 0 rgba(255, 255, 255, 0.07);
+  transition: background 0.18s ease, color 0.18s ease, transform 0.18s ease;
 }
 .round svg {
   width: 19px; height: 19px; fill: none;
   stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;
 }
 .round:hover, .volume button:hover {
-  background: radial-gradient(ellipse at 35% 30%, #484950 0%, #2e2f32 60%, #252628 100%);
+  background: #3a3c40;
   color: #c0c1c4;
-  transform: translateY(-1px);
-  box-shadow: 0 5px 14px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.09);
 }
 .round:active, .volume button:active {
-  transform: scale(0.95);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2), inset 0 2px 4px rgba(0, 0, 0, 0.15);
+  background: #212225;
+  transform: scale(0.96);
 }
 
 /* D-pad: colored-ring style with icons */
@@ -507,12 +461,17 @@ a.btn.link:hover { background: var(--accent-soft); border-color: rgba(0, 113, 22
 .round { width: 46px; height: 46px; border-radius: 50%; }
 .round.back svg { width: 21px; }
 .round.home svg, .round.menu svg { width: 19px; }
-.round.tv { font-size: 11px; font-weight: 700; }
+.round.tv { font-size: 10px; font-weight: 700; }
 .round.tv span {
-  padding: 2px 5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 21px;
+  height: 15px;
+  padding: 0 3px;
   border: 1.5px solid currentColor;
   border-radius: 4px;
-  letter-spacing: 0.04em;
+  line-height: 1;
 }
 .volume {
   width: 46px;
@@ -522,9 +481,8 @@ a.btn.link:hover { background: var(--accent-soft); border-color: rgba(0, 113, 22
   display: grid;
   grid-template-rows: 1fr 1fr;
   border-radius: 23px;
-  border: 1px solid #4a4b4d;
-  background: radial-gradient(ellipse at 35% 30%, #3a3b3e 0%, #222324 60%, #1a1b1c 100%);
-  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.07);
+  border: none;
+  background: #2b2c2f;
 }
 .volume button { border-radius: 0; border: none; font-size: 20px; font-weight: 200; }
 .volume button:first-child { border-bottom: 1px solid #3a3b3e; }
@@ -564,7 +522,7 @@ tbody tr:last-child td { border-bottom: none; }
 @keyframes modal-bg-in { from { opacity: 0; } }
 .modal.hidden, .hidden { display: none !important; }
 .modal-box {
-  width: min(680px, 100%);
+  width: min(1080px, 100%);
   max-height: 88vh;
   overflow: auto;
   background: var(--surface);
@@ -648,7 +606,7 @@ textarea.raw { min-height: 220px; font-family: "SF Mono", "Cascadia Code", Menlo
   box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.14);
   transition: box-shadow 0.18s ease, transform 0.18s ease;
 }
-.layer-tab.device-active { border-color: var(--layer-color, var(--green)); color: var(--text); }
+.layer-tab.device-active { color: var(--text); }
 .layer-tab.device-active::before {
   transform: scale(1.15);
   box-shadow:
@@ -665,17 +623,6 @@ textarea.raw { min-height: 220px; font-family: "SF Mono", "Cascadia Code", Menlo
 }
 
 
-
-.btn.dirty { position: relative; }
-.btn.dirty::after {
-  content: "";
-  position: absolute;
-  top: -3px; right: -3px;
-  width: 9px; height: 9px;
-  border-radius: 50%;
-  background: var(--orange);
-  box-shadow: 0 0 0 2px #fff;
-}
 
 /* ----------------------------- live key status ----------------------------- */
 .live-meta { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 14px; }
@@ -781,6 +728,108 @@ textarea.raw { min-height: 220px; font-family: "SF Mono", "Cascadia Code", Menlo
 }
 .preset:active { transform: scale(0.95); }
 
+/* ---- Visual keyboard layout ---- */
+/* One 92-column grid (4 columns per key unit). Keys are placed explicitly via
+   grid-row/grid-column so all clusters line up and the numpad "+"/"Enter" can
+   span two rows. The grid keeps a min width and scrolls on narrow screens. */
+.kb-full {
+  background: linear-gradient(180deg, var(--surface-2) 0%, #eceef3 100%);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.kb-rows {
+  display: grid;
+  grid-template-columns: repeat(92, minmax(0, 1fr));
+  grid-auto-rows: minmax(40px, 40px);
+  gap: 5px 0;
+  min-width: 920px;
+  align-items: stretch;
+}
+.kb-key {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  margin: 1.5px;
+  height: 100%;
+  min-height: 40px;
+  padding: 1px 2px;
+  background: linear-gradient(180deg, #ffffff 0%, #f1f1f3 100%);
+  border: 1px solid #d4d4d9;
+  border-bottom-color: #c2c2c8;
+  border-radius: 5px;
+  color: #3a3a3c;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1;
+  text-align: center;
+  cursor: pointer;
+  overflow: hidden;
+  user-select: none;
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.04);
+  transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease,
+    transform 0.08s ease, box-shadow 0.12s ease;
+}
+.kb-key:hover {
+  background: linear-gradient(180deg, #eaf3ff 0%, #d8e8fd 100%);
+  border-color: var(--accent);
+  color: var(--accent);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 6px rgba(0, 113, 227, 0.15);
+}
+.kb-key:active {
+  transform: translateY(1px);
+  box-shadow: none;
+}
+.kb-key:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.kb-key.active {
+  background: linear-gradient(180deg, #3f9bff 0%, var(--accent) 100%);
+  border-color: var(--accent-deep);
+  color: #fff;
+  box-shadow: 0 0 0 2px rgba(0, 113, 227, 0.2), 0 2px 6px rgba(0, 113, 227, 0.35);
+}
+.kb-key.active:hover {
+  background: linear-gradient(180deg, #59aaff 0%, var(--accent-hover) 100%);
+  color: #fff;
+}
+.kb-key .kb-key-label {
+  pointer-events: none;
+  min-width: 0;
+  max-width: 100%;
+  white-space: nowrap;
+}
+.kb-key .kb-key-label.long {
+  font-size: 9px;
+  letter-spacing: -0.03em;
+}
+/* Symbol keycaps: shifted glyph above the base glyph */
+.kb-key .kb-leg {
+  display: block;
+  line-height: 1;
+  pointer-events: none;
+}
+.kb-key .kb-leg-shift { font-size: 8.5px; opacity: 0.6; }
+.kb-key .kb-leg-base { font-size: 11.5px; }
+
+/* Inline keyboard in editor */
+.kb-inline { margin-top: 6px; }
+.kb-inline .kb-full {
+  max-height: 320px;
+  overflow-y: auto;
+}
+.kb-selected-name {
+  color: var(--accent);
+  font-weight: 600;
+}
+
 /* ----------------------------- scrollbar ----------------------------- */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
@@ -799,7 +848,9 @@ textarea.raw { min-height: 220px; font-family: "SF Mono", "Cascadia Code", Menlo
 @media (max-width: 640px) {
   .topbar { padding: 10px 14px; }
   main { padding: 18px 14px 80px; }
-  .remote { width: min(160px, 68vw); padding: 24px 18px 32px; border-radius: 26px; }
+  .remote { width: min(138px, 62vw); padding: 24px 16px 32px; border-radius: 26px; }
   .stats { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); }
   .stat .value { font-size: 20px; }
+  .kb-full { padding: 8px; }
+  .kb-rows { min-width: 860px; }
 }

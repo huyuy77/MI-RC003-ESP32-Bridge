@@ -14,8 +14,8 @@
 // The landing page advertised through the WebUSB BOS descriptor.
 // Scheme is defined by WEBUSB_LANDING_SCHEME (0 = http, 1 = https).
 // Keep this in sync with the static site in /webusb-config.
-#define WEBUSB_LANDING_URL     "localhost:8000/"
-#define WEBUSB_LANDING_SCHEME  0
+#define WEBUSB_LANDING_URL     "ncmro7.github.io/MI-RC003-ESP32-Bridge/"
+#define WEBUSB_LANDING_SCHEME  1
 
 // Vendor request code advertised in the BOS descriptor (GET_URL).
 #define WEBUSB_VENDOR_CODE     0x01

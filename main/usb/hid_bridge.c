@@ -18,6 +18,16 @@
 static SemaphoreHandle_t s_hid_mutex = NULL;
 static uint8_t s_mouse_buttons = 0;
 
+// Real HID output state, used to drive the LED (yellow while the host is
+// receiving a pressed key/button, cleared on release).
+static bool s_keyboard_pressed = false;
+static bool s_consumer_pressed = false;
+
+static void update_hid_led(void)
+{
+    led_indicator_set_hid_active(s_keyboard_pressed || s_consumer_pressed || s_mouse_buttons != 0);
+}
+
 static void hid_lock(void)
 {
     if (!s_hid_mutex) {
@@ -58,6 +68,8 @@ bool usb_hid_keyboard_press(uint8_t modifier, uint8_t keycode)
     report.modifier = modifier;
     report.keycode[0] = keycode;
     tud_hid_n_report(0, HID_REPORT_ID_KEYBOARD, &report, sizeof(report));
+    s_keyboard_pressed = (modifier != 0 || keycode != 0);
+    update_hid_led();
 
     hid_unlock();
     return true;
@@ -65,16 +77,22 @@ bool usb_hid_keyboard_press(uint8_t modifier, uint8_t keycode)
 
 bool usb_hid_keyboard_release(void)
 {
-    if (!tud_hid_ready()) {
-        return false;
-    }
     hid_lock();
 
-    hid_keyboard_report_t report = {0};
-    tud_hid_n_report(0, HID_REPORT_ID_KEYBOARD, &report, sizeof(report));
+    // Always clear the tracked state, even when the bus is not ready, so the
+    // LED cannot get stuck on after a disconnect.
+    s_keyboard_pressed = false;
+    update_hid_led();
+
+    bool ok = false;
+    if (tud_hid_ready()) {
+        hid_keyboard_report_t report = {0};
+        tud_hid_n_report(0, HID_REPORT_ID_KEYBOARD, &report, sizeof(report));
+        ok = true;
+    }
 
     hid_unlock();
-    return true;
+    return ok;
 }
 
 bool usb_hid_keyboard_tap(uint8_t modifier, uint8_t keycode)
@@ -101,6 +119,8 @@ bool usb_hid_consumer_press(uint16_t usage_code)
 
     uint8_t report[2] = { (uint8_t)(usage_code & 0xFF), (uint8_t)(usage_code >> 8) };
     tud_hid_n_report(0, HID_REPORT_ID_CONSUMER, report, sizeof(report));
+    s_consumer_pressed = (usage_code != 0);
+    update_hid_led();
 
     hid_unlock();
     return true;
@@ -108,16 +128,20 @@ bool usb_hid_consumer_press(uint16_t usage_code)
 
 bool usb_hid_consumer_release(void)
 {
-    if (!tud_hid_ready()) {
-        return false;
-    }
     hid_lock();
 
-    uint8_t report[2] = {0, 0};
-    tud_hid_n_report(0, HID_REPORT_ID_CONSUMER, report, sizeof(report));
+    s_consumer_pressed = false;
+    update_hid_led();
+
+    bool ok = false;
+    if (tud_hid_ready()) {
+        uint8_t report[2] = {0, 0};
+        tud_hid_n_report(0, HID_REPORT_ID_CONSUMER, report, sizeof(report));
+        ok = true;
+    }
 
     hid_unlock();
-    return true;
+    return ok;
 }
 
 bool usb_hid_consumer_tap(uint16_t usage_code)
@@ -155,6 +179,7 @@ bool usb_hid_mouse_button_press(uint8_t button_mask)
     hid_lock();
     s_mouse_buttons |= button_mask;
     bool ok = mouse_report_locked(s_mouse_buttons, 0, 0, 0);
+    update_hid_led();
     hid_unlock();
     return ok;
 }
@@ -164,6 +189,7 @@ bool usb_hid_mouse_button_release(uint8_t button_mask)
     hid_lock();
     s_mouse_buttons &= (uint8_t)~button_mask;
     bool ok = mouse_report_locked(s_mouse_buttons, 0, 0, 0);
+    update_hid_led();
     hid_unlock();
     return ok;
 }
@@ -173,6 +199,7 @@ bool usb_hid_mouse_buttons_release(void)
     hid_lock();
     s_mouse_buttons = 0;
     bool ok = mouse_report_locked(0, 0, 0, 0);
+    update_hid_led();
     hid_unlock();
     return ok;
 }
@@ -201,12 +228,13 @@ void usb_hid_dispatch_action(const key_action_t *action)
             action->type, action->modifier, action->key_code, action->consumer_code,
             action->mouse_dx, action->mouse_dy, action->mouse_wheel);
 
+    // The LED is driven by the real HID output state: usb_hid_*_press/release
+    // turn it yellow while the host is receiving a held key/button. Voice
+    // actions still take over with the blue streaming colour.
     if (action->type == ACTION_VOICE_HOLD) {
         led_indicator_set(LED_STATE_MIC_STREAMING);
     } else if (action->type == ACTION_VOICE_RELEASE) {
         led_indicator_set(LED_STATE_CONNECTED);
-    } else {
-        led_indicator_trigger_key(false);
     }
 
     switch (action->type) {
@@ -247,10 +275,11 @@ void usb_hid_dispatch_action(const key_action_t *action)
             usb_hid_mouse_button_press(action->key_code);
             break;
         case ACTION_MOUSE_BUTTON_RELEASE:
+            // Internal action only: emitted when a mouse-button-hold key is
+            // released. A configured "mouse button release" action no longer
+            // exists, so the button mask is always present here.
             if (action->key_code) {
                 usb_hid_mouse_button_release(action->key_code);
-            } else {
-                usb_hid_mouse_buttons_release();
             }
             break;
         case ACTION_MOUSE_MOVE:

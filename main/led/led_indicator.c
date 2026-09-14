@@ -18,6 +18,11 @@ static led_state_t s_flash_state = LED_STATE_WAIT_CONNECTION;
 static int64_t     s_flash_expire_us = 0;
 static bool        s_is_flashing = false;
 
+// True while the host is receiving at least one pressed HID key/button. This
+// tracks the real output state (set on report press, cleared on release)
+// instead of flashing once per input event.
+static bool s_hid_active = false;
+
 static uint32_t s_layer_color = 0x00FF00;
 static bool     s_layer_flash = false;
 
@@ -76,7 +81,17 @@ static void led_task(void *arg)
         if (s_is_flashing && esp_timer_get_time() > s_flash_expire_us) {
             s_is_flashing = false;
         }
-        state = s_is_flashing ? s_flash_state : s_current_base_state;
+        if (s_is_flashing) {
+            state = s_flash_state;
+        } else if (s_hid_active) {
+            state = LED_STATE_HID_KEY_PRESS;
+        } else {
+            state = s_current_base_state;
+        }
+        // Voice streaming keeps priority over the HID-press colour.
+        if (!s_is_flashing && s_current_base_state == LED_STATE_MIC_STREAMING) {
+            state = LED_STATE_MIC_STREAMING;
+        }
         show_layer_color = s_layer_flash && s_is_flashing;
         layer_color = s_layer_color;
         portEXIT_CRITICAL(&s_led_mux);
@@ -119,13 +134,10 @@ void led_indicator_set(led_state_t state)
     portEXIT_CRITICAL(&s_led_mux);
 }
 
-void led_indicator_trigger_key(bool is_voice_key)
+void led_indicator_set_hid_active(bool active)
 {
     portENTER_CRITICAL(&s_led_mux);
-    s_layer_flash = false;
-    s_flash_state = is_voice_key ? LED_STATE_MIC_KEY_PRESS : LED_STATE_HID_KEY_PRESS;
-    s_flash_expire_us = esp_timer_get_time() + 100 * 1000;
-    s_is_flashing = true;
+    s_hid_active = active;
     portEXIT_CRITICAL(&s_led_mux);
 }
 

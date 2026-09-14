@@ -485,6 +485,15 @@ void key_engine_feed_key(key_mapper_engine_t *engine, uint8_t raw_key_code, bool
                     b.click_action.type == ACTION_MOUSE_BUTTON_HOLD ||
                     b.click_action.type == ACTION_MOUSE_WHEEL) {
                     emit_action(engine, &b.click_action, raw_key_code, true);
+                } else if (b.has_click &&
+                           (b.click_action.type == ACTION_KEYBOARD_TAP ||
+                            b.click_action.type == ACTION_CONSUMER_TAP ||
+                            b.click_action.type == ACTION_MOUSE_BUTTON_TAP)) {
+                    // Click mappings fire immediately on press so the host
+                    // reacts without waiting for the key-up. The release branch
+                    // below deliberately does not re-emit them, so holding the
+                    // physical key cannot trigger the click twice.
+                    emit_action(engine, &b.click_action, raw_key_code, true);
                 }
             }
         }
@@ -509,12 +518,14 @@ void key_engine_feed_key(key_mapper_engine_t *engine, uint8_t raw_key_code, bool
                 } else if (b.click_action.type == ACTION_MOUSE_BUTTON_HOLD) {
                     key_action_t rel = { ACTION_MOUSE_BUTTON_RELEASE, 0, b.click_action.key_code, 0, 0, 0, 0, 0 };
                     emit_action(engine, &rel, raw_key_code, false);
-                } else if (b.click_action.type == ACTION_MOUSE_MOVE ||
-                           b.click_action.type == ACTION_MOUSE_WHEEL) {
-                    // Movement is emitted on press (and via repeat); nothing on release.
-                } else if (b.has_click && b.click_action.type != ACTION_SWITCH_LAYER) {
+                } else if (b.has_click &&
+                           (b.click_action.type == ACTION_KEYBOARD_RELEASE ||
+                            b.click_action.type == ACTION_CONSUMER_RELEASE)) {
+                    // Explicit release actions still fire on key-up.
                     emit_action(engine, &b.click_action, raw_key_code, false);
                 }
+                // Keyboard/consumer/mouse TAP, mouse move, wheel and layer
+                // switch are emitted on press; nothing to do on release.
             } else {
                 if (s->long_fired) {
                     if (b.long_action.type == ACTION_KEYBOARD_HOLD) {

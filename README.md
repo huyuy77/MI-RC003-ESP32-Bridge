@@ -6,7 +6,7 @@ USB 复合设备转发到 Windows，并使用 **浏览器 WebUSB** 完成设备�
 配置页面 https://ncmro7.github.io/MI-RC003-ESP32-Bridge/
 
 > [!WARNING]
-> **本项目由 AI 修改而成，尚未开发完全，可能存在较多的 bug，暂不建议使用。**
+> **⚠️ 本项目由 AI 辅助开发，尚未完善，可能存在较多问题，请谨慎使用。**
 > 如需稳定可用的方案，建议使用
 > [cuicui-V5/RemoteMapper-ESP32](https://github.com/cuicui-V5/RemoteMapper-ESP32)。
 
@@ -160,7 +160,7 @@ package-release.bat -Version 1.1.0  :: 指定版本号（默认读取 main/versi
 > **二次开发**：设备通信已封装为无依赖的浏览器库
 > [`webusb-config/assets/mi-rc003.js`](./webusb-config/assets/mi-rc003.js)，
 > 第三方可以只写自己的 HTML/JS 调用该 API，完全替换默认 UI。
-> 完整 API 参考见 [`webusb-config/doc.md`](./webusb-config/doc.md)。
+> 完整 API 参考见 [`webusb-config/api.md`](./webusb-config/api.md)（权威，随库维护）。
 
 ### 5.1 本地运行（推荐）
 
@@ -174,8 +174,9 @@ python -m http.server 8000
 浏览器打开 <http://localhost:8000/>，点击「连接设备」，在弹出的设备列表中选择
 `MI-RC003 Remote Bridge`。
 
-> 固件 BOS 描述符中的着陆页地址默认为 `http://localhost:8000/`，
-> 可在 `main/version.h` 的 `WEBUSB_LANDING_URL` / `WEBUSB_LANDING_SCHEME` 中修改。
+> 固件 BOS 描述符中的着陆页地址默认为
+> `https://ncmro7.github.io/MI-RC003-ESP32-Bridge/`；本地开发时可在 `main/version.h`
+> 的 `WEBUSB_LANDING_URL` / `WEBUSB_LANDING_SCHEME` 中改回 `http://localhost:8000/`。
 
 ### 5.2 部署到公网（可选）
 
@@ -191,6 +192,10 @@ python -m http.server 8000
 
 配置页面包含：设备状态、按键配置（5 个配置方案可视化编辑）、蓝牙配对、运行日志、系统设置
 与原始 JSON 导入导出。
+
+按键编辑器提供可视化选择器：完整键盘布局、多媒体键分组、鼠标按键示意图，以及滚轮
+「方向 + 格数」选择，并配有常用动作的快捷预设。「语音」动作可配置 Windows 语音快捷键
+（默认 `RAlt + ,`）。
 
 ---
 
@@ -243,7 +248,8 @@ python -m http.server 8000
 
 所有映射均可在配置站点中自由修改；支持 5 个配置方案与单击/长按/双击/连发，动作类型可选
 键盘、多媒体，以及**鼠标按键（左/右/中/后退/前进）与鼠标移动/滚轮**。鼠标移动可选上/下/左/右
-方向并设置速度，按住持续移动，松开即停。
+方向并设置速度，按住持续移动，松开即停；滚轮可选滚动方向与每次格数。鼠标按键提供单击与
+按住两种（按住时松开自动释放）；「语音」动作可配置 Windows 语音快捷键（默认 `RAlt + ,`）。
 
 > 说明：RC003 的 HOGP 输入报文是「Report ID 1 + 3 个小端 16-bit 键盘 usage」。
 > 固件会将其解析并归一化为上表的内部键码（例如 HID usage `0x4A/0x65/0x35` 分别
@@ -283,7 +289,9 @@ MI-RC003-ESP32-Bridge/
 │   └── log/app_log.*
 └── webusb-config/                 # 浏览器配置站点（静态）
     ├── index.html
-    ├── assets/{app.js,style.css}
+    ├── api.md                      # 浏览器库 API 参考（权威）
+    ├── doc.md                      # 旧版说明
+    ├── assets/{mi-rc003.js,app.js,style.css}
     └── flash/                     # 网页固件烧录（ESP Web Tools）
         ├── index.html
         ├── manifest.json

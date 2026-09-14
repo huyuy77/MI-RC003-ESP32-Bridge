@@ -1,5 +1,8 @@
 # MI-RC003 Bridge · WebUI JavaScript API
 
+> **维护提示**：权威、随库维护的 API 参考已迁移至 [`api.md`](./api.md)，
+> 本文档保留作历史说明，内容可能与最新代码不完全一致。
+
 > **WebUI 版本**：`1.2`（见 `assets/app.js` 顶部的 `WEBUI_VERSION`，独立于固件版本，仅 UI 变更时递增）。页面右上角标题栏会显示 `WebUI v1.2`。
 
 `assets/mi-rc003.js` 是一个无依赖的浏览器端库，封装了与 MI-RC003 Bridge 固件之间的
@@ -64,14 +67,28 @@ WebUSB 通信协议。第三方可以**只写自己的 HTML/JS**，引入该库�
 | `NVS_RESET` | `0x31` | 恢复出厂（清空 NVS） |
 | `SYSTEM_RESTART` | `0x40` | 重启设备 |
 
-### `MiRC003.ACTION` — 动作类型
+### `MiRC003.STATUS` — 响应状态码
 
 ```js
-{ 0:"无", 1:"键盘-单击", 2:"键盘-按住", 3:"键盘-释放",
-  4:"多媒体-单击", 5:"多媒体-按住", 6:"多媒体-释放",
-  7:"语音", 8:"语音释放", 9:"切换配置", 10:"穿透继承",
-  11:"鼠标按键-单击", 12:"鼠标按键-按住", 13:"鼠标按键-释放",
-  14:"鼠标移动", 15:"鼠标滚轮" }
+{ OK: 0, ERR_CMD: 1, ERR_ARG: 2, ERR_INTERNAL: 3 }
+```
+
+### `MiRC003.ACTIONS` / `MiRC003.ACTION` — 动作类型
+
+`ACTIONS` 为数值常量，`ACTION` 为同名中文映射：
+
+```js
+MiRC003.ACTIONS.KEYBOARD_TAP // 1
+MiRC003.ACTIONS.CONSUMER_TAP // 4
+MiRC003.ACTIONS.MOUSE_MOVE   // 14
+// ...
+MiRC003.ACTION               // { 0:"无", 1:"键盘-单击", ... }
+```
+
+### `MiRC003.GESTURES` — 手势名
+
+```js
+{ CLICK: "click", LONG: "long", DOUBLE: "double", REPEAT: "repeat" }
 ```
 
 ### `MiRC003.PHYSICAL_KEYS` — 遥控器物理按键
@@ -97,14 +114,19 @@ WebUSB 通信协议。第三方可以**只写自己的 HTML/JS**，引入该库�
   [0x10,"右Ctrl"], [0x20,"右Shift"], [0x40,"右Alt"], [0x80,"右Win"] ]
 ```
 
-### `MiRC003.HID_GROUPS` / `MiRC003.CONSUMER_GROUPS` — 键码分组
+### `MiRC003.HID_GROUPS` / `MiRC003.HID_EXTRA_GROUPS` / `MiRC003.CONSUMER_GROUPS` — 键码分组
 
 供构建下拉框使用，格式为 `[组名, [[usage, 名称], ...]]`：
 
 ```js
-MiRC003.HID_GROUPS      // 键盘：字母/数字/常用/符号/F1-F24/导航/小键盘
-MiRC003.CONSUMER_GROUPS // 多媒体：媒体/音量/系统/浏览器
+MiRC003.HID_GROUPS       // 屏幕键盘上的键：字母/数字/常用/符号/功能键/导航/小键盘
+MiRC003.HID_EXTRA_GROUPS // 屏幕键盘上没有、但 Windows 支持的键：
+                         //   F13-F24、编辑/应用键、小键盘扩展、国际/输入法键
+MiRC003.CONSUMER_GROUPS  // 多媒体：媒体/音量/系统/浏览器
 ```
+
+> 默认 UI 的按键编辑器在可视化键盘下方提供一个「扩展按键」下拉框，
+> 数据即来自 `HID_EXTRA_GROUPS`。
 
 ---
 
@@ -192,6 +214,48 @@ dev.send(cmd, payloadObj?, rawBytes?)
 - `rawBytes`（`Uint8Array`）优先，作为原始负载（如 `KEYMAP_DATA`）；
 - 所有调用**自动串行化**（同一时刻只有一个请求在途）；
 - 返回解析后的 JSON 对象；`status != 0` 时 reject。
+
+### Keymap 工具（`MiRC003.Keymap`）
+
+纯函数集合，用于在内存中构建/检查第 4 节的 keymap 结构，避免第三方 UI 重复
+处理 `has_*`、`*_type` 等字段。典型用法：
+
+```js
+const km = await dev.getKeymap();
+const layer = MiRC003.Keymap.findLayer(km, 0);
+
+// 单击：键盘 Enter
+MiRC003.Keymap.setGesture(layer, 0x28, "click",
+  MiRC003.Keymap.action(MiRC003.ACTIONS.KEYBOARD_TAP, { keyCode: 0x28, modifier: 0 }));
+
+// 长按：多媒体 音量+
+MiRC003.Keymap.setGesture(layer, 0x28, "long",
+  MiRC003.Keymap.action(MiRC003.ACTIONS.CONSUMER_TAP, { consumerCode: 0xe9, ms: 600 }));
+
+// 连发
+MiRC003.Keymap.setGesture(layer, 0x28, "repeat",
+  MiRC003.Keymap.action(MiRC003.ACTIONS.CONSUMER_TAP, { consumerCode: 0xe9,
+    delayMs: 350, intervalMs: 70 }));
+
+// 清除某个手势：action 传 null
+MiRC003.Keymap.setGesture(layer, 0x28, "long", null);
+
+await dev.saveKeymap(km);
+```
+
+| 方法 | 说明 |
+| :--- | :--- |
+| `action(type, opts?)` | 构造动作对象（`keyCode`/`consumerCode`/`targetLayer`/`dx`/`dy`/`wheel`/`ms`/`delayMs`/`intervalMs`） |
+| `clone(keymap)` | 深拷贝 keymap |
+| `findLayer(keymap, id)` | 按 id 查找配置 |
+| `getBinding(layer, sourceVk)` | 读取某键的绑定 |
+| `ensureBinding(layer, sourceVk)` | 读取或新建绑定 |
+| `removeBinding(layer, sourceVk)` | 删除某键的绑定 |
+| `setGesture(layer, sourceVk, gesture, action)` | 设置/清除手势（`click`/`long`/`double`/`repeat`） |
+| `getGesture(layer, sourceVk, gesture)` | 以动作对象读回手势 |
+| `describe(layer, sourceVk)` | 生成可读的映射摘要 |
+| `hidName(code)` | HID 键码对应的名称（含扩展键表） |
+| `validate(keymap)` | 结构校验，返回错误字符串数组（空数组 = 合法） |
 
 ---
 

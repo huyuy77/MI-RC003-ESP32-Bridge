@@ -4,13 +4,13 @@
  * This file is only the presentation layer. All device communication goes
  * through the reusable `MiRC003` client (assets/mi-rc003.js). Third parties can
  * replace this file entirely and build their own UI on the same API; see
- * doc.md for the reference.
+ * api.md for the reference.
  */
 (function () {
   "use strict";
 
   // WebUI version (independent of the firmware version). Bump on UI changes.
-  const WEBUI_VERSION = "1.2";
+  const WEBUI_VERSION = "1.4";
 
   const dev = new MiRC003();
   const ACTION = MiRC003.ACTION;
@@ -18,7 +18,9 @@
   const MOD_BITS = MiRC003.MOD_BITS;
   const MOUSE_BUTTONS = MiRC003.MOUSE_BUTTONS;
   const HID_GROUPS = MiRC003.HID_GROUPS;
+  const HID_EXTRA_GROUPS = MiRC003.HID_EXTRA_GROUPS;
   const CONSUMER_GROUPS = MiRC003.CONSUMER_GROUPS;
+  const Keymap = MiRC003.Keymap;
 
   const ICON = {
     power: '<svg viewBox="0 0 24 24"><path d="M12 3v9M7.05 5.93a8 8 0 1 0 9.9 0"/></svg>',
@@ -522,6 +524,14 @@
     ]},
   ];
 
+  // Common PC voice-shortcut presets for the voice action (type 7).
+  // Each entry is a modifier mask + HID key sent while the voice key is held.
+  const VOICE_SHORTCUTS = [
+    { label: "Windows 语音输入 (Win+H)", mod: 0x08, key: 0x0b },
+    { label: "微信语音 (右Alt+,)", mod: 0x40, key: 0x36 },
+    { label: "系统听写 (Win+;)", mod: 0x08, key: 0x33 },
+  ];
+
   function setGesture(idx) {
     editingGesture = idx;
     document.querySelectorAll("#gesture-tabs .gesture-tab").forEach((t) => {
@@ -554,12 +564,15 @@
     if (!block) return;
     const set = (sel, val) => { const el = block.querySelector(sel); if (el) el.value = String(val); };
     set(".f-type", p.type);
-    if (p.key != null) { set(".f-key", p.key); set(".f-keynum", p.key); }
-    if (p.cons != null) { set(".f-cons", p.cons); set(".f-consnum", p.cons); }
+    if (p.key != null) { setPickerKey(block, "f-key", p.key); }
+    if (p.cons != null) { setPickerKey(block, "f-cons", p.cons); }
     if (p.layer != null) set("input.f-layer", p.layer);
     if (p.mouseBtn != null) set(".f-mousebtn", p.mouseBtn);
     if (p.dir != null) { set(".f-move-dir", p.dir); set(".f-move-speed", p.speed ?? 8); }
-    if (p.wheel != null) set("input.f-wheel", p.wheel);
+    if (p.wheel != null) {
+      set(".f-wheel-dir", p.wheel < 0 ? "down" : "up");
+      set(".f-wheel-amount", Math.abs(p.wheel) || 3);
+    }
     block.querySelectorAll(".f-mod").forEach((c) => {
       c.checked = p.mod != null && (parseInt(c.value, 10) & p.mod) !== 0;
     });
@@ -570,9 +583,133 @@
     refreshFieldVisibility();
   }
 
+  // Update every representation of the selected HID key inside one action
+  // block: the hidden <select>, the visual keyboard highlight, the extended
+  // keys dropdown and the "当前" label.
+  function selectKeyInBlock(block, val) {
+    const hidden = block.querySelector("select.f-key");
+    if (hidden) hidden.value = String(val);
+
+    const kb = block.querySelector(".kb-inline");
+    if (kb) kb.querySelectorAll("[data-val]").forEach((b) => b.classList.toggle("active", Number(b.dataset.val) === val));
+
+    const ext = block.querySelector("select.f-key-ext");
+    if (ext) {
+      const has = Array.from(ext.options).some((o) => o.value !== "" && Number(o.value) === val);
+      ext.value = has ? String(val) : "";
+    }
+
+    const nameLabel = block.querySelector(".kb-selected-name");
+    if (nameLabel) nameLabel.textContent = Keymap.hidName(val);
+  }
+
+  function setPickerKey(block, fieldCls, val) {
+    if (fieldCls === "f-key") { selectKeyInBlock(block, val); return; }
+    const sel = block.querySelector("select." + fieldCls);
+    if (sel) sel.value = String(val);
+  }
+
   function actionTypeOptions(selected) {
-    const allowed = [0, 1, 2, 4, 7, 9, 10, 11, 12, 13, 14, 15];
+    // Mouse-button release (13) is internal-only and not user-selectable.
+    const allowed = [0, 1, 2, 4, 7, 9, 10, 11, 12, 14, 15];
     return allowed.map((t) => `<option value="${t}" ${t === selected ? "selected" : ""}>${ACTION[t]}</option>`).join("");
+  }
+
+  // ---- Visual keyboard layout for HID key picker ----
+  // Full-size 104-key ANSI layout drawn on a 92-column grid (4 columns per
+  // 1u key, 23u wide). Keys use their real widths (Tab 1.5u, Caps 1.75u,
+  // Enter 2.25u, L/R Shift 2.25u/2.75u, Space 6.25u, bottom modifiers 1.25u)
+  // so positions line up with a physical keyboard. The numpad "+" and "Enter"
+  // are 1u wide but span two rows.
+  // Tokens: [hidCode, label, widthU?, heightRows?] or a gap number in units.
+  const KB_UNITS = 92;
+  const KB_LAYOUT = [
+    // Function row | PrtSc / ScrLk / Pause above the nav cluster
+    [
+      [0x29, "Esc"], 1,
+      [0x3a, "F1"], [0x3b, "F2"], [0x3c, "F3"], [0x3d, "F4"], 0.5,
+      [0x3e, "F5"], [0x3f, "F6"], [0x40, "F7"], [0x41, "F8"], 0.5,
+      [0x42, "F9"], [0x43, "F10"], [0x44, "F11"], [0x45, "F12"], 0.5,
+      [0x46, "PrtSc"], [0x47, "ScrLk"], [0x48, "Pause"], 4.5,
+    ],
+    // Number row | Ins / Home / PgUp | NumLk / * -
+    [
+      [0x35, "` ~"], [0x1e, "1 !"], [0x1f, "2 @"], [0x20, "3 #"], [0x21, "4 $"],
+      [0x22, "5 %"], [0x23, "6 ^"], [0x24, "7 &"], [0x25, "8 *"], [0x26, "9 ("],
+      [0x27, "0 )"], [0x2d, "- _"], [0x2e, "= +"], [0x2a, "Bksp", 2],
+      0.5,
+      [0x49, "Ins"], [0x4a, "Home"], [0x4b, "PgUp"], 0.5,
+      [0x53, "NumLk"], [0x54, "/"], [0x55, "*"], [0x56, "-"],
+    ],
+    // Tab row | Del / End / PgDn | numpad 7 8 9 +
+    [
+      [0x2b, "Tab", 1.5], [0x14, "Q"], [0x1a, "W"], [0x08, "E"], [0x15, "R"],
+      [0x17, "T"], [0x1c, "Y"], [0x18, "U"], [0x0c, "I"], [0x12, "O"],
+      [0x13, "P"], [0x2f, "[ {"], [0x30, "] }"], [0x31, "\\ |", 1.5],
+      0.5,
+      [0x4c, "Del"], [0x4d, "End"], [0x4e, "PgDn"], 0.5,
+      [0x5f, "7"], [0x60, "8"], [0x61, "9"], [0x57, "+", 1, 2],
+    ],
+    // Caps row | (empty nav column) | numpad 4 5 6 (+ continues)
+    [
+      [0x39, "Caps", 1.75], [0x04, "A"], [0x16, "S"], [0x07, "D"], [0x09, "F"],
+      [0x0a, "G"], [0x0b, "H"], [0x0d, "J"], [0x0e, "K"], [0x0f, "L"],
+      [0x33, '; :'], [0x34, "' \""], [0x28, "Enter", 2.25],
+      4,
+      [0x5c, "4"], [0x5d, "5"], [0x5e, "6"], 1,
+    ],
+    // Shift row | ↑ | numpad 1 2 3 Enter
+    [
+      [0xe1, "LShift", 2.25], [0x1d, "Z"], [0x1b, "X"], [0x06, "C"], [0x19, "V"],
+      [0x05, "B"], [0x11, "N"], [0x10, "M"], [0x36, ", <"], [0x37, ". >"],
+      [0x38, "/ ?"], [0xe5, "RShift", 2.75],
+      1.5, [0x52, "↑"], 1.5,
+      [0x59, "1"], [0x5a, "2"], [0x5b, "3"], [0x58, "Enter", 1, 2],
+    ],
+    // Space row | ← ↓ → | numpad 0 .
+    [
+      [0xe0, "LCtrl", 1.25], [0xe3, "LWin", 1.25], [0xe2, "LAlt", 1.25],
+      [0x2c, "Space", 6.25],
+      [0xe6, "RAlt", 1.25], [0xe7, "RWin", 1.25], [0x65, "Menu", 1.25],
+      [0xe4, "RCtrl", 1.25],
+      0.5,
+      [0x50, "←"], [0x51, "↓"], [0x4f, "→"],
+      0.5,
+      [0x62, "0", 2], [0x63, "."], 1,
+    ],
+  ];
+
+  // Legend markup for one keycap. Symbol keys (label "1 !") show the shifted
+  // glyph above the base glyph, like a real keycap; others render one label.
+  function kbLabelHtml(label) {
+    const parts = String(label).split(" ");
+    if (parts.length === 2) {
+      return `<span class="kb-leg kb-leg-shift">${escapeHtml(parts[1])}</span>` +
+        `<span class="kb-leg kb-leg-base">${escapeHtml(parts[0])}</span>`;
+    }
+    const long = label.length > 3 ? " long" : "";
+    return `<span class="kb-key-label${long}">${escapeHtml(label)}</span>`;
+  }
+
+  function renderVisualKB(selected) {
+    // Tall numpad keys ("+" row2→3, "Enter" row4→5) omit their lower half
+    // from the next row's token list; grid-row span handles the height.
+    let html = '<div class="kb-full"><div class="kb-rows">';
+    KB_LAYOUT.forEach((row, ri) => {
+      let col = 1;
+      row.forEach((tok) => {
+        if (typeof tok === "number") { col += Math.round(tok * 4); return; }
+        const [val, label, w, h] = tok;
+        const width = Math.round((w || 1) * 4);
+        const height = h || 1;
+        const cls = "kb-key" + (val === selected ? " active" : "");
+        html += `<button type="button" class="${cls}" data-val="${val}" style="grid-row:${ri + 1}/span ${height};grid-column:${col}/span ${width}">` +
+          kbLabelHtml(label) + `</button>`;
+        col += width;
+      });
+    });
+    html += "</div></div>";
+    return html;
   }
 
   function renderActionFields(prefix, b) {
@@ -592,8 +729,20 @@
     else if (mdy > 0) moveDir = "down";
     const moveSpeed = Math.max(Math.abs(mdx), Math.abs(mdy)) || 8;
     const ms = b[prefix + "_ms"] ?? (prefix === "long" ? 600 : 250);
+    // Wheel is stored as a signed delta but edited as direction + amount.
+    const wheelDir = wheel < 0 ? "down" : "up";
+    const wheelAmount = Math.abs(wheel) || 3;
+    // Voice shortcut: a preset is selected, otherwise fall back to "custom"
+    // (which reveals the modifier + visual keyboard pickers).
+    const voicePresetIdx = VOICE_SHORTCUTS.findIndex((s) => s.mod === mod && s.key === key);
+    const voiceOptions = VOICE_SHORTCUTS.map((s, i) =>
+      `<option value="${i}" ${i === voicePresetIdx ? "selected" : ""}>${s.label}</option>`).join("") +
+      `<option value="custom" ${voicePresetIdx < 0 ? "selected" : ""}>自定义…</option>`;
 
-    const usageOptions = HID_GROUPS.map(([g, items]) =>
+    // Hidden <select> holds the actual key value; the visual keyboard and the
+    // extended dropdown both update it. It carries the full usage list so an
+    // extended key (e.g. F13) survives a read-back.
+    const usageOptions = HID_GROUPS.concat(HID_EXTRA_GROUPS).map(([g, items]) =>
       `<optgroup label="${g}">` + items.map(([v, n]) =>
         `<option value="${v}" ${v === key ? "selected" : ""}>${n}</option>`).join("") + `</optgroup>`
     ).join("");
@@ -606,6 +755,13 @@
     const modChecks = MOD_BITS.map(([bit, name]) =>
       `<label class="check"><input type="checkbox" class="f-mod" value="${bit}" ${(mod & bit) ? "checked" : ""}/>${name}</label>`
     ).join("");
+    // Extra keys that are not on the visual keyboard (F13+, keypad, IME, ...).
+    const extraOptions = HID_EXTRA_GROUPS.map(([g, items]) =>
+      `<optgroup label="${g}">` + items.map(([v, n]) =>
+        `<option value="${v}">${n}</option>`).join("") + `</optgroup>`
+    ).join("");
+
+    const selectedKeyName = Keymap.hidName(key);
 
     return `
       <div class="action-block" data-prefix="${prefix}">
@@ -616,18 +772,29 @@
           <div class="field"><label>动作类型</label><select class="f-type">${actionTypeOptions(type)}</select></div>
           ${prefix !== "click" ? `<div class="field"><label>触发时间 (ms)</label><input type="number" class="f-ms" value="${ms}" min="50" max="3000"/></div>` : ""}
         </div>
+        <div class="f-voice">
+          <div class="field">
+            <label>语音快捷键（按住语音键期间发送）</label>
+            <select class="f-voice-shortcut">${voiceOptions}</select>
+          </div>
+        </div>
         <div class="f-keyboard">
           <div class="field"><label>修饰键（可多选）</label><div class="mods">${modChecks}</div></div>
-          <div class="inline">
-            <div class="field"><label>按键</label><select class="f-key">${usageOptions}</select></div>
-            <div class="field"><label>自定义按键码（0 = 用下拉选择）</label><input type="number" class="f-keynum" value="${key}" min="0" max="255"/></div>
+          <div class="field">
+            <label>按键 — 当前: <b class="kb-selected-name">${escapeHtml(selectedKeyName)}</b></label>
+            <select class="f-key" style="display:none">${usageOptions}</select>
+            <div class="kb-inline" data-prefix="${prefix}">${renderVisualKB(key)}</div>
+          </div>
+          <div class="field">
+            <label>扩展按键（键盘上没有，Windows 支持）</label>
+            <select class="f-key-ext">
+              <option value="">— 从扩展列表选择 —</option>
+              ${extraOptions}
+            </select>
           </div>
         </div>
         <div class="f-consumer">
-          <div class="inline">
-            <div class="field"><label>多媒体键</label><select class="f-cons">${consumerOptions}</select></div>
-            <div class="field"><label>自定义多媒体码（0 = 用下拉选择）</label><input type="number" class="f-consnum" value="${cons}" min="0" max="65535"/></div>
-          </div>
+          <div class="field"><label>多媒体键</label><select class="f-cons">${consumerOptions}</select></div>
         </div>
         <div class="f-layer">
           <div class="field"><label>目标配置 (1-4)</label><input type="number" class="f-layer" value="${layer}" min="0" max="4"/></div>
@@ -648,7 +815,14 @@
           <p class="hint">按住按键时按此方向持续移动，松开即停；速度越大移动越快。</p>
         </div>
         <div class="f-wheel">
-          <div class="field"><label>滚轮 (-127 ~ 127，正数向上)</label><input type="number" class="f-wheel" value="${wheel}" min="-127" max="127"/></div>
+          <div class="inline">
+            <div class="field"><label>滚轮方向</label><select class="f-wheel-dir">
+              <option value="up" ${wheelDir === "up" ? "selected" : ""}>向上</option>
+              <option value="down" ${wheelDir === "down" ? "selected" : ""}>向下</option>
+            </select></div>
+            <div class="field"><label>每次格数 (1-127)</label><input type="number" class="f-wheel-amount" value="${wheelAmount}" min="1" max="127"/></div>
+          </div>
+          <p class="hint">按下按键时按此方向滚动一次；格数越大滚动越多。</p>
         </div>
       </div>`;
   }
@@ -658,10 +832,17 @@
       const typeSel = block.querySelector(".f-type");
       if (!typeSel) return;
       const type = parseInt(typeSel.value, 10);
-      block.querySelector(".f-keyboard").style.display = (type === 1 || type === 2 || type === 7) ? "block" : "none";
+      const voiceSel = block.querySelector(".f-voice-shortcut");
+      const voiceCustom = !!(voiceSel && voiceSel.value === "custom");
+      // Keyboard pickers show for keyboard actions, and for a custom voice
+      // shortcut (a preset voice shortcut needs no manual key editing).
+      block.querySelector(".f-keyboard").style.display =
+        (type === 1 || type === 2 || (type === 7 && voiceCustom)) ? "block" : "none";
+      const voice = block.querySelector(".f-voice");
+      if (voice) voice.style.display = (type === 7) ? "block" : "none";
       block.querySelector(".f-consumer").style.display = (type === 4) ? "block" : "none";
       block.querySelector(".f-layer").style.display = (type === 9) ? "block" : "none";
-      block.querySelector(".f-mouse").style.display = (type === 11 || type === 12 || type === 13) ? "block" : "none";
+      block.querySelector(".f-mouse").style.display = (type === 11 || type === 12) ? "block" : "none";
       block.querySelector(".f-move").style.display = (type === 14) ? "block" : "none";
       block.querySelector(".f-wheel").style.display = (type === 15) ? "block" : "none";
     });
@@ -673,10 +854,8 @@
     const has = hasBox ? hasBox.checked : true;
     let mod = 0;
     block.querySelectorAll(".f-mod").forEach((c) => { if (c.checked) mod |= parseInt(c.value, 10); });
-    const keyNum = parseInt(block.querySelector(".f-keynum")?.value || "0", 10);
-    const keySel = parseInt(block.querySelector(".f-key")?.value || "0", 10);
-    const consNum = parseInt(block.querySelector(".f-consnum")?.value || "0", 10);
-    const consSel = parseInt(block.querySelector(".f-cons")?.value || "0", 10);
+    const keyVal = parseInt(block.querySelector(".f-key")?.value || "0", 10);
+    const consVal = parseInt(block.querySelector(".f-cons")?.value || "0", 10);
     const moveDir = block.querySelector(".f-move-dir")?.value || "up";
     let moveSpeed = parseInt(block.querySelector(".f-move-speed")?.value || "8", 10);
     if (!(moveSpeed >= 1)) moveSpeed = 8;
@@ -686,17 +865,21 @@
     else if (moveDir === "down") mdy = moveSpeed;
     else if (moveDir === "left") mdx = -moveSpeed;
     else if (moveDir === "right") mdx = moveSpeed;
+    const wheelDir = block.querySelector(".f-wheel-dir")?.value || "up";
+    let wheelAmount = parseInt(block.querySelector(".f-wheel-amount")?.value || "3", 10);
+    if (!(wheelAmount >= 1)) wheelAmount = 1;
+    if (wheelAmount > 127) wheelAmount = 127;
     return {
       has,
       type,
       mod,
-      key: keyNum || keySel,
-      cons: consNum || consSel,
+      key: keyVal,
+      cons: consVal,
       layer: parseInt(block.querySelector("input.f-layer")?.value || "0", 10),
       mouseBtn: parseInt(block.querySelector(".f-mousebtn")?.value || "0", 10),
       dx: mdx,
       dy: mdy,
-      wheel: parseInt(block.querySelector("input.f-wheel")?.value || "0", 10),
+      wheel: wheelDir === "down" ? -wheelAmount : wheelAmount,
       ms: parseInt(block.querySelector(".f-ms")?.value || "0", 10),
     };
   }
@@ -731,6 +914,43 @@
       t.onclick = () => setGesture(parseInt(t.dataset.gesture, 10));
     });
     renderPresets();
+    // Wire the inline visual keyboard and the extended-keys dropdown so both
+    // stay in sync with the hidden <select class="f-key">.
+    document.querySelectorAll("#modal-body .kb-inline").forEach((kbEl) => {
+      const block = kbEl.closest(".action-block");
+      if (!block) return;
+      kbEl.querySelectorAll("[data-val]").forEach((btn) => {
+        btn.addEventListener("click", () => selectKeyInBlock(block, Number(btn.dataset.val)));
+      });
+    });
+    document.querySelectorAll("#modal-body select.f-key-ext").forEach((sel) => {
+      sel.addEventListener("change", () => {
+        if (!sel.value) return;
+        selectKeyInBlock(sel.closest(".action-block"), Number(sel.value));
+      });
+    });
+    // Voice shortcut presets write the modifier + key fields; "custom" reveals
+    // the manual keyboard picker instead.
+    document.querySelectorAll("#modal-body select.f-voice-shortcut").forEach((sel) => {
+      sel.addEventListener("change", () => {
+        const block = sel.closest(".action-block");
+        if (sel.value !== "custom") {
+          const preset = VOICE_SHORTCUTS[parseInt(sel.value, 10)];
+          if (preset) {
+            block.querySelectorAll(".f-mod").forEach((c) => {
+              c.checked = (preset.mod & parseInt(c.value, 10)) !== 0;
+            });
+            selectKeyInBlock(block, preset.key);
+          }
+        }
+        refreshFieldVisibility();
+      });
+    });
+    // Reflect the current key in every control (highlight, dropdown, label).
+    document.querySelectorAll("#modal-body .action-block").forEach((block) => {
+      const hidden = block.querySelector("select.f-key");
+      if (hidden) selectKeyInBlock(block, parseInt(hidden.value || "0", 10));
+    });
     $("modal").classList.remove("hidden");
     refreshFieldVisibility();
     setGesture(0);
@@ -909,14 +1129,6 @@
     };
     document.addEventListener("change", (e) => {
       if (e.target.classList.contains("f-type")) refreshFieldVisibility();
-      if (e.target.classList.contains("f-key")) {
-        const num = e.target.closest(".f-keyboard")?.querySelector(".f-keynum");
-        if (num) num.value = e.target.value;
-      }
-      if (e.target.classList.contains("f-cons")) {
-        const num = e.target.closest(".f-consumer")?.querySelector(".f-consnum");
-        if (num) num.value = e.target.value;
-      }
     });
 
     setConnected(false);
