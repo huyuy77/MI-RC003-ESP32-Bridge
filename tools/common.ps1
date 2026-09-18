@@ -6,6 +6,33 @@ $Script:BuildDir = Join-Path $Script:RepoRoot 'build'
 $Script:CacheDir = Join-Path $Script:RepoRoot '.cache'
 $Script:DistDir = Join-Path $Script:RepoRoot 'dist'
 $Script:WebFlashDir = Join-Path $Script:RepoRoot 'webusb-config\flash'
+$Script:FirmwareOutDir = Join-Path $Script:BuildDir 'firmware'
+
+$Script:Profiles = @('n16r8', 'n8r2', 'n4r2')
+$Script:DefaultProfile = 'n16r8'
+$Script:ProfileInfo = [ordered]@{
+    n16r8 = [pscustomobject]@{ Profile = 'n16r8'; Label = 'N16R8'; Flash = '16MB'; Psram = '8MB Octal' }
+    n8r2  = [pscustomobject]@{ Profile = 'n8r2';  Label = 'N8R2';  Flash = '8MB';  Psram = '2MB Quad' }
+    n4r2  = [pscustomobject]@{ Profile = 'n4r2';  Label = 'N4R2';  Flash = '4MB';  Psram = '2MB Quad' }
+}
+
+function Get-ProfileInfo([string]$Profile) {
+    $Profile = $Profile.ToLower()
+    if (-not $Script:ProfileInfo.Contains($Profile)) { throw ('未知硬件配置: ' + $Profile) }
+    return $Script:ProfileInfo[$Profile]
+}
+
+function Get-ProfileFlashSize([string]$Profile) { return (Get-ProfileInfo $Profile).Flash }
+
+function Get-ProfileBuildDir([string]$Profile) { return (Join-Path $Script:RepoRoot ('build-' + $Profile)) }
+
+function Get-ProfileSdkconfig([string]$Profile) { return (Join-Path $Script:RepoRoot ('.sdkconfig.' + $Profile)) }
+
+function Get-ProfileDefaultsFile([string]$Profile) {
+    $p = Join-Path $Script:RepoRoot ('sdkconfig.defaults.' + $Profile)
+    if (-not (Test-Path $p)) { throw ('未找到硬件配置: ' + $p) }
+    return $p
+}
 
 function Write-Title([string]$Text) {
     Write-Host ''
@@ -54,12 +81,13 @@ function Initialize-IdfEnv {
 }
 
 function Get-FlashPlan {
-    $fa = Join-Path $Script:BuildDir 'flasher_args.json'
+    param([string]$BuildDir = $Script:BuildDir)
+    $fa = Join-Path $BuildDir 'flasher_args.json'
     if (-not (Test-Path $fa)) { throw ('未找到 ' + $fa + '，请先编译固件。') }
     $j = Get-Content $fa -Raw -Encoding UTF8 | ConvertFrom-Json
     $files = @()
     foreach ($prop in $j.flash_files.PSObject.Properties) {
-        $full = Join-Path $Script:BuildDir $prop.Value
+        $full = Join-Path $BuildDir $prop.Value
         if (-not (Test-Path $full)) { throw ('缺少固件文件: ' + $full) }
         $files += [pscustomobject]@{ Offset = $prop.Name; File = $full; Rel = $prop.Value }
     }
@@ -137,8 +165,15 @@ function New-MergedBin {
     $a += '--flash-size'; $a += $FlashSize
     foreach ($f in $Plan.Files) { $a += $f.Offset; $a += $f.File }
     Write-Info '合并镜像 (bootloader + 分区表 + 应用)'
-    & $Esptool.File @a
-    if ($LASTEXITCODE -ne 0) { throw 'merge-bin 失败' }
+    $prevEap = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        & $Esptool.File @a
+        $mergeCode = $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $prevEap
+    }
+    if ($mergeCode -ne 0) { throw 'merge-bin 失败' }
     if (-not (Test-Path $OutFile)) { throw ('未生成 ' + $OutFile) }
 }
 
@@ -163,13 +198,61 @@ function New-ZipFromDirectory([string]$SourceDir, [string]$ZipPath) {
     }
 }
 
-function New-WebFlashFiles([string]$Version, [string]$MergedBin) {
+function Write-JsonFile([string]$Path, $Object) {
+    $json = $Object | ConvertTo-Json -Depth 8
+    [System.IO.File]::WriteAllText($Path, $json, (New-Object System.Text.UTF8Encoding($false)))
+}
+
+function Copy-BinFile([string]$Source, [string]$Destination) {
+    $src = (Resolve-Path $Source).Path
+    if (Test-Path $Destination) {
+        if ($src -ieq (Resolve-Path $Destination).Path) { return }
+    }
+    Copy-Item $src $Destination -Force
+}
+
+function New-WebFlashFiles([string]$Version, [System.Collections.IDictionary]$MergedBins) {
     $fwDir = Join-Path $Script:WebFlashDir 'firmware'
     New-Item -ItemType Directory -Force -Path $fwDir | Out-Null
-    Copy-Item $MergedBin (Join-Path $fwDir 'merged-flash.bin') -Force
 
-    $manifest = [ordered]@{
-        name                     = 'MI-RC003 Bridge'
+    $profiles = @($Script:Profiles | Where-Object { $MergedBins.Contains($_) })
+    if ($profiles.Count -eq 0) { throw '没有可用的硬件固件。' }
+
+    $boards = @()
+    foreach ($prof in $profiles) {
+        $info = Get-ProfileInfo $prof
+        $binName = 'merged-flash-' + $prof + '.bin'
+        Copy-BinFile $MergedBins[$prof] (Join-Path $fwDir $binName)
+
+        $manifest = [ordered]@{
+            name                     = 'MI-RC003 Bridge ' + $info.Label
+            version                  = $Version
+            new_install_prompt_erase = $true
+            builds                   = @(
+                [ordered]@{
+                    chipFamily = 'ESP32-S3'
+                    parts      = @(
+                        [ordered]@{ path = 'firmware/' + $binName; offset = 0 }
+                    )
+                }
+            )
+        }
+        Write-JsonFile (Join-Path $Script:WebFlashDir ('manifest-' + $prof + '.json')) $manifest
+
+        $boards += [ordered]@{
+            profile  = $prof
+            label    = $info.Label
+            flash    = $info.Flash
+            psram    = $info.Psram
+            manifest = 'manifest-' + $prof + '.json'
+        }
+    }
+
+    $primary = $profiles[0]
+    Copy-BinFile $MergedBins[$primary] (Join-Path $fwDir 'merged-flash.bin')
+    $primaryInfo = Get-ProfileInfo $primary
+    $defaultManifest = [ordered]@{
+        name                     = 'MI-RC003 Bridge ' + $primaryInfo.Label
         version                  = $Version
         new_install_prompt_erase = $true
         builds                   = @(
@@ -181,8 +264,12 @@ function New-WebFlashFiles([string]$Version, [string]$MergedBin) {
             }
         )
     }
-    $json = $manifest | ConvertTo-Json -Depth 8
-    [System.IO.File]::WriteAllText(
-        (Join-Path $Script:WebFlashDir 'manifest.json'), $json,
-        (New-Object System.Text.UTF8Encoding($false)))
+    Write-JsonFile (Join-Path $Script:WebFlashDir 'manifest.json') $defaultManifest
+
+    Write-JsonFile (Join-Path $Script:WebFlashDir 'boards.json') ([ordered]@{
+        version        = $Version
+        defaultProfile = $primary
+        boards         = $boards
+    })
 }
+

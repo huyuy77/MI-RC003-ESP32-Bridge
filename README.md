@@ -101,14 +101,16 @@ USB 复合设备包含 4 个接口：
 
 **方式一：网页在线烧录（推荐）**
 
-打开 <https://ncmro7.github.io/MI-RC003-ESP32-Bridge/flash/>，用桌面版 Chrome / Edge 直接烧录
-（Web Serial）。设备需先进入 ROM 下载模式：按住 `BOOT` → 点按 `RST` → 松开 `BOOT`。
+打开 <https://ncmro7.github.io/MI-RC003-ESP32-Bridge/flash/>，先选择开发板型号
+（N16R8 / N8R2 / N4R2），再用桌面版 Chrome / Edge 直接烧录（Web Serial）。
+设备需先进入 ROM 下载模式：按住 `BOOT` → 点按 `RST` → 松开 `BOOT`。
 
 **方式二：Windows 免安装工具**
 
 从 [Releases](https://github.com/ncmro7/MI-RC003-ESP32-Bridge/releases) 下载
 `MI-RC003-Bridge-<版本>-win64.zip`，解压后双击 `flash.bat`。内置 esptool，**无需安装
-Python / ESP-IDF**，自动探测串口并烧录。
+Python / ESP-IDF**，自动探测串口并烧录；运行时按提示选择开发板型号
+（也可用 `flash.bat -Profile n8r2` 直接指定）。
 
 ### 4.2 连接配置站点
 
@@ -251,15 +253,14 @@ idf.py -D "SDKCONFIG=.sdkconfig.n4r2" -D "SDKCONFIG_DEFAULTS=sdkconfig.defaults;
 idf.py -p COMx flash monitor
 ```
 
-也可使用一键发布脚本选择板型（默认 `n16r8`）：
+也可使用一键发布脚本，默认会为全部板型各生成一份固件：
 
 ```bat
-build-firmware.bat -Profile n16r8
-build-firmware.bat -Profile n8r2
-build-firmware.bat -Profile n4r2
+build-firmware.bat                  :: 构建 n16r8 / n8r2 / n4r2
+build-firmware.bat -Profile n8r2    :: 仅构建指定板型（可逗号分隔，如 -Profile n16r8,n8r2）
 ```
 
-每次切换 profile 后，请重新执行 `idf.py build`；烧录工具与网页烧录目录会保存本次构建对应的固件。
+生成的固件按板型分开存放；Windows 烧录工具与网页烧录页在烧录时均可选择硬件版本。
 
 ---
 
@@ -274,14 +275,14 @@ package-release.bat           :: 打包 Windows 免安装烧录工具到 dist\
 
 | 产物 | 说明 |
 | :--- | :--- |
-| `build/merged-flash.bin` | Windows 免安装烧录工具用的合并固件 |
-| `webusb-config/flash/firmware/merged-flash.bin` + `manifest.json` | 网页烧录固件（受版本控制） |
+| `build/firmware/merged-flash-<板型>.bin` | 各板型的合并固件（Windows 烧录工具用；默认板型另存一份 `build/merged-flash.bin`） |
+| `webusb-config/flash/firmware/merged-flash-<板型>.bin` + `manifest-<板型>.json` + `boards.json` | 网页烧录固件与板型清单（受版本控制） |
 | `dist/MI-RC003-Bridge-<版本>-win64/` | 免安装 Windows 烧录包（内置 esptool + `flash.bat`） |
 | `dist/MI-RC003-Bridge-<版本>-win64.zip` | 发布压缩包，上传 GitHub Release |
 | `dist/SHA256SUMS.txt` | 发布包 SHA-256 |
 
 最终用户拿到的 Windows 包结构：`flash.bat`、`flash.ps1`、`esptool.exe`、`使用说明.txt`、
-`firmware/merged-flash.bin`。
+`firmware/merged-flash-<板型>.bin`。
 
 > `dist/`、`build/`、`sdkconfig`、`managed_components/` 均已在 `.gitignore` 中忽略，不要提交。
 
@@ -361,8 +362,9 @@ MI-RC003-ESP32-Bridge/
     ├── assets/{mi-rc003.js,app.js,style.css}
     └── flash/                     # 网页固件烧录（ESP Web Tools）
         ├── index.html
-        ├── manifest.json
-        └── firmware/merged-flash.bin
+        ├── boards.json             # 板型清单（页面据此选择硬件版本）
+        ├── manifest-<板型>.json
+        └── firmware/merged-flash-<板型>.bin
 ```
 
 ---

@@ -30,6 +30,7 @@ static uint8_t  s_tv_rapid_count = 0;
 static uint32_t s_tv_rapid_first_ms = 0;
 
 extern void led_indicator_set_switch_mode(bool active);
+extern void key_config_storage_request_save(void);
 
 void key_engine_lock(void)
 {
@@ -240,6 +241,11 @@ void key_engine_switch_layer(key_mapper_engine_t *engine, uint8_t target_layer, 
 
     led_indicator_set_layer_color(engine->layers[target_layer].led_color);
     app_log("KEYMAP", "Layer Switched -> [%u: %s]", target_layer, engine->layers[target_layer].name);
+
+    // Persist the selection so a device-side switch (configuration-switch mode,
+    // ACTION_SWITCH_LAYER, WebUSB set-layer) survives a reboot instead of
+    // reverting to the last layer written by a keymap save.
+    key_config_storage_request_save();
 }
 
 void key_engine_enter_switch_mode(key_mapper_engine_t *engine, uint32_t now_ms, bool via_tv_rapid)

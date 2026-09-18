@@ -39,8 +39,10 @@ python -m http.server 8000
 `flash/` 子目录是基于 [ESP Web Tools](https://esphome.github.io/esp-web-tools/) 的**浏览器固件烧录页**，
 部署后访问 `https://<站点>/flash/`，用桌面版 Chrome / Edge 即可直接烧录固件（Web Serial）。
 
-页面文件：`flash/index.html`、`flash/manifest.json`、`flash/firmware/merged-flash.bin`。
-其中 `manifest.json` 与固件由根目录 `package-release.bat` 自动生成，请勿手工编辑。
+页面文件：`flash/index.html`、`flash/boards.json`、`flash/manifest-<板型>.json`、
+`flash/firmware/merged-flash-<板型>.bin`。页面通过 `boards.json` 列出可用板型（N16R8 / N8R2 /
+N4R2），用户选择后加载对应的 `manifest-<板型>.json` 再烧录。
+其中 manifest、板型清单与固件均由根目录 `build-firmware.bat` 自动生成，请勿手工编辑。
 
 ## 通信协议
 

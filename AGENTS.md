@@ -56,16 +56,18 @@
 
 发布流程分两步，均使用仓库内脚本（不要在脚本之外手工拼装固件）：
 
-1. **生成烧录固件**（编译 + 合并 bootloader/分区表/应用）：
+1. **生成烧录固件**（编译 + 合并 bootloader/分区表/应用，默认覆盖全部板型）：
 
    ```bat
    build-firmware.bat
+   build-firmware.bat -Profile n8r2      :: 仅生成指定板型（可逗号分隔）
    ```
 
-   产物：
-   - `build/merged-flash.bin` —— **Windows 免安装烧录工具用的固件**。
-   - `webusb-config/flash/firmware/merged-flash.bin` 与 `webusb-config/flash/manifest.json`
-     —— 网页烧录固件（这两个文件**受版本控制**，发布时需一并提交）。
+   产物（按板型 `n16r8` / `n8r2` / `n4r2` 分开）：
+   - `build/firmware/merged-flash-<板型>.bin` —— **Windows 免安装烧录工具用的固件**
+     （默认板型另存一份 `build/merged-flash.bin` 以兼容旧流程）。
+   - `webusb-config/flash/firmware/merged-flash-<板型>.bin`、`manifest-<板型>.json` 与
+     `boards.json` —— 网页烧录固件与板型清单（**受版本控制**，发布时需一并提交）。
 
 2. **打包 Windows 免安装烧录工具**（需先执行第 1 步）：
 
@@ -104,17 +106,19 @@ dist/
 │   ├── esptool.exe                   # 内置烧录工具（来自 espressif/esptool）
 │   ├── LICENSE-esptool.txt           # esptool 原始许可证
 │   ├── 使用说明.txt                  # 面向用户的说明（由 package-release.ps1 生成）
-│   └── firmware/merged-flash.bin     # 合并固件（含 bootloader + 分区表 + 应用）
+│   └── firmware/merged-flash-<板型>.bin # 各板型合并固件（含 bootloader + 分区表 + 应用）
 ├── MI-RC003-Bridge-<版本>-win64.zip  # 上述目录的压缩包，上传 GitHub Release
 └── SHA256SUMS.txt                    # 发布 zip 的 SHA-256
 ```
 
 ### 工作原理（对用户）
 
-- 用户**无需 Python / ESP-IDF**：双击 `flash.bat`，`flash.ps1` 自动探测串口
-  （优先 `VID_303A&PID_1001` 的 USB-JTAG 串口），等待最多 **90 秒**进入下载模式，
-  然后将 `firmware/merged-flash.bin` 写入偏移 `0x0`，成功后设备自动重启。
-- 常用参数：`flash.bat -Port COM5`、`-Erase`（整片擦除）、`-Baud 460800`。
+- 用户**无需 Python / ESP-IDF**：双击 `flash.bat`，`flash.ps1` 先列出 `firmware/` 内可用板型
+  供用户选择（`-Profile` 可跳过选择），再自动探测串口（优先 `VID_303A&PID_1001` 的 USB-JTAG
+  串口），等待最多 **90 秒**进入下载模式，然后将 `firmware/merged-flash-<板型>.bin` 写入偏移
+  `0x0`，成功后设备自动重启。
+- 常用参数：`flash.bat -Profile n8r2`、`flash.bat -Port COM5`、`-Erase`（整片擦除）、
+  `-Baud 460800`。
 - 设备正运行固件时原生 USB 口不提供串口，需先按住 `BOOT` → 点按 `RST` → 松开 `BOOT`
   进入 ROM 下载模式（脚本会在无串口时打印该提示）。
 

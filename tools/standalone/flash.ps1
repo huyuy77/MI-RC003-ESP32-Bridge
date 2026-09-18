@@ -3,9 +3,10 @@
 param(
     [string]$Port = '',
     [int]$Baud = 921600,
+    [string]$Profile = '',
     [string]$FlashMode = 'dio',
     [string]$FlashFreq = '80m',
-    [string]$FlashSize = '16MB',
+    [string]$FlashSize = '',
     [switch]$Erase,
     [switch]$Yes
 )
@@ -14,9 +15,15 @@ $ErrorActionPreference = 'Stop'
 $Script:Root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $Script:Port = $Port
 $Script:Baud = $Baud
+$Script:Profile = $Profile
 $Script:AutoYes = [bool]$Yes
 $Script:Esptool = $null
 $Script:EsptoolStyle = ''
+$Script:Profiles = [ordered]@{
+    n16r8 = [pscustomobject]@{ Label = 'N16R8'; Flash = '16MB'; Psram = '8MB Octal' }
+    n8r2  = [pscustomobject]@{ Label = 'N8R2';  Flash = '8MB';  Psram = '2MB Quad' }
+    n4r2  = [pscustomobject]@{ Label = 'N4R2';  Flash = '4MB';  Psram = '2MB Quad' }
+}
 
 function Write-Title([string]$Text) {
     Write-Host ''
@@ -82,11 +89,50 @@ function Get-EsptoolStyle {
     return $Script:EsptoolStyle
 }
 
-function Find-Firmware {
-    foreach ($p in @((Join-Path $Script:Root 'firmware\merged-flash.bin'), (Join-Path $Script:Root 'build\merged-flash.bin'))) {
-        if (Test-Path $p) { return $p }
+function Find-Firmwares {
+    $result = [ordered]@{}
+    foreach ($prof in $Script:Profiles.Keys) {
+        $p = Join-Path $Script:Root ('firmware\merged-flash-' + $prof + '.bin')
+        if (Test-Path $p) { $result[$prof] = $p }
     }
-    return $null
+    if ($result.Count -eq 0) {
+        $legacy = Join-Path $Script:Root 'firmware\merged-flash.bin'
+        if (Test-Path $legacy) { $result['n16r8'] = $legacy }
+    }
+    return $result
+}
+
+function Resolve-Firmware {
+    $firmwares = Find-Firmwares
+    if ($firmwares.Count -eq 0) { throw '未找到固件 firmware\merged-flash-<板型>.bin。' }
+
+    if ($Script:Profile) {
+        $key = $Script:Profile.ToLower()
+        if (-not $firmwares.Contains($key)) { throw ('未找到硬件版本固件: ' + $Script:Profile) }
+        return [pscustomobject]@{ Profile = $key; Path = $firmwares[$key] }
+    }
+
+    $keys = @($firmwares.Keys)
+    if ($keys.Count -eq 1 -or $Script:AutoYes) {
+        $key = $keys[0]
+        return [pscustomobject]@{ Profile = $key; Path = $firmwares[$key] }
+    }
+
+    Write-Host ''
+    Write-Host '检测到多个硬件版本固件，请选择你的开发板：' -ForegroundColor Yellow
+    for ($i = 0; $i -lt $keys.Count; $i++) {
+        $info = $Script:Profiles[$keys[$i]]
+        Write-Host ('  [{0}] {1}  ({2} Flash / {3} PSRAM)' -f ($i + 1), $info.Label, $info.Flash, $info.Psram)
+    }
+    while ($true) {
+        $sel = Read-Host '请输入序号 (直接回车选择 1)'
+        if ([string]::IsNullOrWhiteSpace($sel)) { $sel = '1' }
+        if ($sel -match '^\d+$' -and [int]$sel -ge 1 -and [int]$sel -le $keys.Count) {
+            $key = $keys[[int]$sel - 1]
+            return [pscustomobject]@{ Profile = $key; Path = $firmwares[$key] }
+        }
+        Write-Warn '输入无效，请重新输入。'
+    }
 }
 
 function Get-SerialPorts {
@@ -213,14 +259,16 @@ function Resolve-Port {
 try {
     Write-Title 'MI-RC003 Bridge 固件烧录'
 
-    $fw = Find-Firmware
-    if (-not $fw) { throw '未找到固件 firmware\merged-flash.bin。' }
+    $sel = Resolve-Firmware
+    $fw = $sel.Path
+    if (-not $FlashSize) { $FlashSize = $Script:Profiles[$sel.Profile].Flash }
 
     $tool = Find-Esptool
     if (-not $tool) { throw '未找到 esptool，请确认 esptool.exe 与本脚本在同一目录。' }
     $style = Get-EsptoolStyle
 
     $port = Resolve-Port
+    Write-Info ('硬件版本: ' + $Script:Profiles[$sel.Profile].Label)
     Write-Info ('固件: ' + $fw)
     Write-Info ('串口: ' + $port + '    波特率: ' + $Script:Baud)
 

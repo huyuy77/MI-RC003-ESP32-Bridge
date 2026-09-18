@@ -1,4 +1,7 @@
 # Name,   Type, SubType, Offset,   Size,     Flags
-nvs,      data, nvs,     0x9000,   0x10000,
+# NOTE: nvs is placed AFTER the factory app so the merged-flash image (written
+# at 0x0, padded with 0xFF up to the app end) never overwrites the stored
+# keymap / BLE bonds during a non-erase firmware update.
 phy_init, data, phy,     0x19000,  0x1000,
 factory,  app,  factory, 0x20000,  0x300000,
+nvs,      data, nvs,     0x320000, 0x10000,
