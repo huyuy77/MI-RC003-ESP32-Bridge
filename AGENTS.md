@@ -54,7 +54,7 @@
 
 ## 4. 发布要求
 
-发布流程分两步，均使用仓库内脚本（不要在脚本之外手工拼装固件）：
+发布流程分三步，均使用仓库内脚本（不要在脚本之外手工拼装固件）：
 
 1. **生成烧录固件**（编译 + 合并 bootloader/分区表/应用，默认覆盖全部板型）：
 
@@ -77,7 +77,16 @@
    ```
 
    产物在 `dist/`：`MI-RC003-Bridge-<版本>-win64/`、同名 `.zip`、`SHA256SUMS.txt`。
-   将 zip 上传 GitHub Release。
+
+3. **发布 GitHub Release**：除上传 `dist/MI-RC003-Bridge-<版本>-win64.zip` 外，**必须一并上传
+   全部原始固件**（按板型提供，便于用户单独烧录 / 回滚）：
+
+   - `build/firmware/merged-flash-n16r8.bin`
+   - `build/firmware/merged-flash-n8r2.bin`
+   - `build/firmware/merged-flash-n4r2.bin`
+   - `build/merged-flash.bin`（默认板型兼容文件）
+
+   每个固件以原文件名作为 Release 附件，不要只发 zip 而遗漏原始固件。
 
 ### 版本号
 
